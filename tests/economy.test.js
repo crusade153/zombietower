@@ -1,0 +1,152 @@
+import { describe, it, expect } from 'vitest';
+import {
+  weaponDamage, upgradeCost, canUpgrade, chestOdds, rollRarity, rollWeapon, sellValue,
+} from '../src/combat/Weapons.js';
+import { WEAPONS, WEAPON_KINDS } from '../src/config/weapons.js';
+import { ECON, TOWER, LAVA } from '../src/config/balance.js';
+import { generateTower } from '../src/world/TowerGenerator.js';
+import { ZOMBIES, hpScale, coinScale } from '../src/config/zombies.js';
+import { Lava } from '../src/world/Lava.js';
+import { makeRng } from '../src/core/rng.js';
+
+const W = (kind, rarity = 0, level = 0) => ({ kind, rarity, level });
+
+describe('무기·강화', () => {
+  it('무기별 기본 1타 공격력이 서로 다르다', () => {
+    const dmgs = WEAPON_KINDS.map((k) => weaponDamage(W(k)));
+    expect(new Set(dmgs).size).toBe(dmgs.length);
+    expect(weaponDamage(W('axe'))).toBeGreaterThan(weaponDamage(W('bat')));
+    expect(weaponDamage(W('bat'))).toBeGreaterThan(weaponDamage(W('whip')));
+  });
+
+  it('등급과 강화 레벨이 오를수록 공격력이 오른다', () => {
+    for (const k of WEAPON_KINDS) {
+      let prev = 0;
+      for (let r = 0; r < 4; r++) {
+        const d = weaponDamage(W(k, r));
+        expect(d).toBeGreaterThan(prev);
+        prev = d;
+      }
+      expect(weaponDamage(W(k, 0, 10))).toBeCloseTo(WEAPONS[k].dmg * (1 + ECON.upgradeDmgPerLevel * 10), 6);
+    }
+  });
+
+  it('강화 비용은 레벨마다 증가하고 최대 레벨에서 강화 불가', () => {
+    let prev = 0;
+    for (let l = 0; l <= ECON.maxLevel; l++) {
+      const c = upgradeCost(W('bat', 0, l));
+      expect(c).toBeGreaterThan(prev);
+      prev = c;
+    }
+    expect(canUpgrade(W('bat', 0, ECON.maxLevel))).toBe(false);
+    expect(canUpgrade(W('bat', 0, ECON.maxLevel - 1))).toBe(true);
+    expect(upgradeCost(W('bat', 3, 0))).toBeGreaterThan(upgradeCost(W('bat', 0, 0)));
+  });
+});
+
+describe('보물상자 확률', () => {
+  it('각 층의 확률 합이 100이고 층이 오를수록 높은 등급 비중이 커진다', () => {
+    let prevHigh = -1;
+    for (let s = 1; s <= TOWER.stages; s++) {
+      const o = chestOdds(s);
+      expect(o.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6);
+      const high = o[2] + o[3];
+      expect(high).toBeGreaterThanOrEqual(prevHigh);
+      prevHigh = high;
+    }
+  });
+
+  it('시뮬레이션 분포가 확률표와 일치 (1층/10층)', () => {
+    for (const stage of [1, 10]) {
+      const rng = makeRng(stage * 99);
+      const n = 40000;
+      const cnt = [0, 0, 0, 0];
+      for (let i = 0; i < n; i++) cnt[rollRarity(stage, rng)]++;
+      const o = chestOdds(stage);
+      for (let r = 0; r < 4; r++) expect(Math.abs(cnt[r] / n - o[r] / 100)).toBeLessThan(0.012);
+    }
+    // 1층 상자에서는 전설이 나오지 않는다
+    const rng = makeRng(5);
+    for (let i = 0; i < 5000; i++) expect(rollRarity(1, rng)).toBeLessThan(3);
+  });
+
+  it('보스층 상자는 영웅 이상 확정', () => {
+    const rng = makeRng(11);
+    for (let i = 0; i < 3000; i++) expect(rollWeapon(5, rng, true).rarity).toBeGreaterThanOrEqual(2);
+  });
+
+  it('중복 판매가가 등급이 높을수록 크다', () => {
+    expect(sellValue(W('bat', 3))).toBeGreaterThan(sellValue(W('bat', 0)));
+  });
+});
+
+describe('경제 밸런스 (참고 수치)', () => {
+  it('한 번 플레이로 벌 수 있는 코인으로 강화를 몇 번 할 수 있는지 확인', () => {
+    const t = generateTower(2024);
+    let total = 0;
+    const perStage = [];
+    for (const st of t.stages) {
+      let c = 0;
+      for (const z of st.zombies) c += ZOMBIES[z.type].coin * coinScale(st.index);
+      perStage.push(Math.round(c));
+      total += c;
+    }
+    // 코인이 너무 적거나(강화 불가) 너무 많으면(무한 강화) 안 된다
+    const firstUpgrade = upgradeCost(W('bat', 0, 0));
+    expect(perStage[0]).toBeGreaterThan(firstUpgrade * 0.5); // 1층에서 첫 강화가 거의 가능
+    const maxBat = Array.from({ length: ECON.maxLevel }, (_, l) => upgradeCost(W('bat', 0, l))).reduce((a, b) => a + b, 0);
+    expect(total).toBeGreaterThan(maxBat * 0.3);
+    expect(total).toBeLessThan(maxBat * 6);
+  });
+
+  it('좀비 체력 곡선: 10층이 1층의 2배대', () => {
+    expect(hpScale(10) / hpScale(1)).toBeGreaterThan(2);
+    expect(hpScale(10) / hpScale(1)).toBeLessThan(4);
+  });
+});
+
+describe('용암 상태 전이', () => {
+  const mk = () => new Lava({ add() {} });
+
+  it('idle에서는 상승하지 않고, begin 후 delay 뒤 상승', () => {
+    const l = mk();
+    l.setIdle(-10); l.y = -10;
+    for (let i = 0; i < 600; i++) l.update(0.01, 0);
+    expect(l.y).toBeCloseTo(-10, 5);
+    l.begin(1, 2);
+    for (let i = 0; i < 100; i++) l.update(0.01, 0); // 1초: 아직 delay
+    expect(l.y).toBeCloseTo(-10, 5);
+    for (let i = 0; i < 400; i++) l.update(0.01, 0); // 4초 더: delay 1초 남고 3초 상승
+    expect(l.y).toBeGreaterThan(-8);
+  });
+
+  it('플레이어가 28m 이상 앞서면 1.6배 속도', () => {
+    const a = mk(); const b = mk();
+    a.reset(0, 0); b.reset(0, 0);
+    a.begin(1, 0); b.begin(1, 0);
+    for (let i = 0; i < 100; i++) { a.update(0.01, 5); b.update(0.01, LAVA.catchUpGap + 5); }
+    expect(b.y / a.y).toBeCloseTo(LAVA.catchUpMult, 1);
+  });
+
+  it('물대포: 굳으면 정지·바닥 고체, 시간이 지나면 다시 상승', () => {
+    const l = mk();
+    l.reset(0, 0); l.begin(1, 0);
+    for (let i = 0; i < 100; i++) l.update(0.01, 20);
+    const y = l.y;
+    expect(l.freeze(LAVA.waterFreeze)).toBe(true);
+    for (let i = 0; i < 300; i++) l.update(0.01, 20); // 3초
+    expect(l.frozen).toBe(true);
+    expect(l.floor.solid).toBe(true);
+    expect(l.y).toBeCloseTo(y, 5);
+    for (let i = 0; i < 400; i++) l.update(0.01, 20); // 총 7초 > 6초
+    expect(l.frozen).toBe(false);
+    expect(l.floor.solid).toBe(false);
+    expect(l.y).toBeGreaterThan(y);
+  });
+
+  it('안전구역(idle)에서는 물대포가 작동하지 않는다', () => {
+    const l = mk();
+    l.setIdle(-5);
+    expect(l.freeze()).toBe(false);
+  });
+});

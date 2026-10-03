@@ -1,0 +1,17 @@
+{
+  "name": "좀비 타워",
+  "short_name": "좀비타워",
+  "description": "용암이 차오르는 타워를 좀비를 뚫고 올라가는 3D 점프맵 서바이벌",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#140808",
+  "theme_color": "#140808",
+  "lang": "ko",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

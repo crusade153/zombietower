@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="좀비 타워" />
+  <meta name="theme-color" content="#140808" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+  <link rel="icon" href="/icons/icon-192.png" />
+  <title>좀비 타워</title>
+</head>
+<body>
+  <div id="app">
+    <canvas id="game"></canvas>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div id="hud-left">
+        <div class="bar"><div id="hp-fill"></div><span id="hp-text">100</span></div>
+        <div id="coin-line"><i class="coin"></i><span id="coin-text">0</span></div>
+      </div>
+      <div id="hud-center">
+        <div id="stage-text">1층</div>
+        <div class="lava-meter"><span class="lava-ico">🔥</span><div class="lava-track"><div id="lava-fill"></div></div><span id="lava-gap">--m</span></div>
+      </div>
+      <div id="hud-right">
+        <button id="btn-pause" class="mini-btn" aria-label="일시정지">⏸</button>
+        <button id="btn-mute" class="mini-btn" aria-label="소리">🔊</button>
+      </div>
+      <div id="vignette"></div>
+      <div id="toast"></div>
+      <div id="debug" class="hidden"></div>
+      <div id="floaters"></div>
+    </div>
+
+    <!-- 터치 컨트롤 -->
+    <div id="controls" class="hidden">
+      <div id="dpad">
+        <div class="arm up" data-dir="up">▲</div>
+        <div class="arm down" data-dir="down">▼</div>
+        <div class="arm left" data-dir="left">◀</div>
+        <div class="arm right" data-dir="right">▶</div>
+        <div class="hub"></div>
+      </div>
+      <div id="btn-cluster">
+        <div id="weapon-slots"></div>
+        <button id="btn-water" class="act-btn water" aria-label="물대포">💧<span id="water-count">2</span></button>
+        <button id="btn-attack" class="act-btn attack" aria-label="공격">⚔️</button>
+        <button id="btn-jump" class="act-btn jump" aria-label="점프">⤒<small>점프</small></button>
+      </div>
+      <div id="ctx-buttons"></div>
+    </div>
+
+    <!-- 화면(타이틀/상자/대장간 등) -->
+    <div id="screen" class="hidden"></div>
+    <div id="rotate-hint" class="hidden"><div>📱↻<br />가로로 돌려주세요</div></div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
