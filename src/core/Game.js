@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { PHYS, LAVA, TOWER, PLAYER } from '../config/balance.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { PHYS, LAVA, TOWER, PLAYER, ECON } from '../config/balance.js';
 import { WEAPONS, RARITY } from '../config/weapons.js';
 import { ZOMBIES, zombieWeights } from '../config/zombies.js';
 import { generateTower } from '../world/TowerGenerator.js';
@@ -20,7 +21,7 @@ import {
   loadSave, writeSave, newSave, addWeapon, weaponByUid,
 } from './Save.js';
 import {
-  def as wdef, weaponDamage, hasPerk, upgradeCost, canUpgrade, sellValue, rollWeapon,
+  def as wdef, weaponDamage, hasPerk, upgradeCost, canUpgrade, sellValue, sellPrice, rollWeapon,
 } from '../combat/Weapons.js';
 import { Hud } from '../ui/Hud.js';
 import { Screens } from '../ui/Screens.js';
@@ -40,20 +41,29 @@ export class Game {
   constructor() {
     this.canvas = document.getElementById('game');
     const dpr = window.devicePixelRatio || 1;
+    this.touchDevice = window.matchMedia('(pointer: coarse)').matches;
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: dpr < 2, powerPreference: 'high-performance' });
-    this.maxRatio = Math.min(dpr, 2);
+    this.maxRatio = Math.min(dpr, this.touchDevice ? 1.5 : 2);
     this.ratio = this.maxRatio;
     this.renderer.setPixelRatio(this.ratio);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.12;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.lobby = new Lobby();
     this._frameEma = 1 / 60;
     this._adaptT = 0;
     this.scene = new THREE.Scene();
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const room = new RoomEnvironment();
+    this.environment = pmrem.fromScene(room, 0.04);
+    this.scene.environment = this.lobby.scene.environment = this.environment.texture;
+    this.scene.environmentIntensity = 0.55;
+    this.lobby.scene.environmentIntensity = 0.65;
+    room.dispose();
+    pmrem.dispose();
     this.camera = new THREE.PerspectiveCamera(62, 1, 0.1, 1200);
     this.cam = new CameraRig(this.camera);
     this.input = new Input();
@@ -110,7 +120,7 @@ export class Game {
 
     this.tower = generateTower(this.save.seed);
     preparePlatforms(this.tower);
-    this.world = new WorldView(this.scene, this.tower);
+    this.world = new WorldView(this.scene, this.tower, { touchDevice: this.touchDevice });
     this.lava = new Lava(this.scene);
     this.near = buildNearCache(this.tower, this.lava.floor);
     this.player = new Player(this.scene);
@@ -121,7 +131,6 @@ export class Game {
     this.checkpoint = this.tower.safeZones[0];
     this.slot = 0;
     this.cd = 0;
-    this.reloading = 0;
     this.pending = null;
     this.water = { charges: LAVA.waterCharges, cd: 0 };
     this.climberT = 20;
@@ -130,16 +139,18 @@ export class Game {
     this.beatT = 0;
     this.deadT = 0;
     this.bandStage = 0;
+    this.finalBattle = false;
 
     this.spawnStaticPickups();
     this.spawnZombies();
-    this.resetToSafe(this.save.lastSafe);
+    this.resetToSafe(this.save.resumeSafe, this.save.resumeAtBoss ? this.tower.bossSanctuary : undefined);
     for (let k = 0; k <= TOWER.stages; k++) this.world.setChestOpened(k, this.save.openedChests.includes(k));
   }
 
   spawnZombies() {
     for (const st of this.tower.stages) {
       for (const sp of st.zombies) {
+        if (sp.type === 'finalBoss' && this.save.finalBossDefeated) continue;
         const z = new Zombie(this, sp.type, st.index, sp);
         z.stageIdx = st.index;
         this.zombies.push(z);
@@ -164,21 +175,27 @@ export class Game {
     }
   }
 
-  resetToSafe(k) {
-    const sz = this.tower.safeZones[k];
+  resetToSafe(k, sz = this.tower.safeZones[k]) {
+    if (!sz) return;
     this.player.reset(sz.safe.spawn.x, sz.maxY + 0.05, sz.safe.spawn.z, Math.atan2(sz.next.x, sz.next.z));
     this.cam.snapTo(this.player.body, sz.next);
     this.checkpoint = sz;
     this.curGround = null;
+    this.pending = null;
+    this.cd = 0;
+    this.stageCoins = 0;
+    this.water.cd = 0;
     this.playerSafe = true;
     this.safeIdx = k;
+    this.activeSafe = sz;
+    this.finalBattle = false;
     this.lava.reset(sz.maxY - LAVA.startGap, 0);
     this.lava.setIdle(sz.maxY - LAVA.startGap);
     this.lava.y = sz.maxY - LAVA.startGap;
     this.water.charges = Math.max(this.water.charges, LAVA.waterCharges);
-    this.bandStage = k;
-    this.world.setActiveStage(k);
-    this.hud.setStage(k === 0 ? '출발' : `안전구역 ${k}`);
+    this.bandStage = sz.stage;
+    this.world.setActiveStage(sz.stage);
+    this.hud.setStage(sz.safe.bossPrep ? '최종 보스 준비' : k === 0 ? '출발' : `안전구역 ${k}`);
   }
 
   bindUi() {
@@ -233,7 +250,7 @@ export class Game {
       this.markDirty();
       this.hud.toast('모험 시작!', 1600);
     } else {
-      this.hud.toast(this.save.lastSafe === 0 ? '타워를 올라가라!' : `안전구역 ${this.save.lastSafe}에서 이어서!`, 1800);
+      this.hud.toast(this.safeIdx === 0 ? '타워를 올라가라!' : `안전구역 ${this.safeIdx}에서 이어서!`, 1800);
     }
   }
 
@@ -242,6 +259,8 @@ export class Game {
     s.loop = (s.loop || 0) + 1;
     s.seed = (Math.random() * 1e9) | 0;
     s.lastSafe = 0;
+    s.resumeSafe = 0;
+    s.bossSanctuaryUnlocked = s.resumeAtBoss = s.finalBossDefeated = false;
     s.openedChests = [];
     s.cleared = false;
     writeSave(s);
@@ -267,6 +286,22 @@ export class Game {
   }
 
   resume() { if (this.state === 'paused') this.state = 'play'; }
+
+  restartFromFloor(k, bossPrep = false) {
+    if (!['title', 'paused'].includes(this.state) || !Number.isInteger(k) || k < 0 || k > this.save.lastSafe) return false;
+    if (bossPrep && !this.save.bossSanctuaryUnlocked) return false;
+    this.flushSave();
+    for (const a of this.acids) { this.scene.remove(a.mesh); disposeWorld(a.mesh); }
+    this.acids = [];
+    this.save.resumeSafe = k;
+    this.save.resumeAtBoss = bossPrep;
+    this.resetToSafe(k, bossPrep ? this.tower.bossSanctuary : undefined);
+    this.input.clearAll();
+    this.markDirty(true);
+    this.screens.hide();
+    this.startRun(true);
+    return true;
+  }
 
   toggleMute() {
     this.audio.setMuted(!this.audio.muted);
@@ -407,7 +442,15 @@ export class Game {
   // 발판 이벤트
   // ------------------------------------------------------------------
   onLand(p) {
-    if (p.type === 'safe') {
+    if (p.type === 'sanctuary') {
+      this.resetToSafe(9, p);
+      this.curGround = p;
+      this.save.bossSanctuaryUnlocked = this.save.resumeAtBoss = true;
+      this.save.resumeSafe = 9;
+      this.markDirty(true);
+      this.hud.toast('❄️ 보스 직전 저장 완료! 회복·강화 후 다음 발판에서 최종 결전', 3000);
+      this.audio.play('safe');
+    } else if (p.type === 'safe') {
       this.enterSafe(p);
     } else {
       this.playerSafe = false;
@@ -423,7 +466,12 @@ export class Game {
       this.bandStage = p.stage;
       this.world.setActiveStage(p.stage);
       this.hud.setStage(`${p.stage}층`);
-      if (p.checkpoint && this.checkpoint !== p) {
+      if (p === this.tower.finalArena) {
+        this.finalBattle = !this.save.finalBossDefeated;
+        this.checkpoint = this.tower.bossSanctuary;
+        this.lava.setIdle(p.maxY - LAVA.startGap);
+        if (this.finalBattle) this.hud.toast('🔥 최종 결전! 용암 군주 · 이그니스', 3000);
+      } else if (p.checkpoint && this.checkpoint !== p) {
         this.checkpoint = p;
         this.hud.toast('🚩 체크포인트', 900);
         this.audio.play('checkpoint');
@@ -433,8 +481,15 @@ export class Game {
 
   enterSafe(p) {
     const k = p.safe.stage;
+    if (k === TOWER.stages && !this.save.finalBossDefeated) {
+      this.resetToSafe(9, this.tower.bossSanctuary);
+      this.hud.toast('정상을 해방하려면 최종 보스를 먼저 쓰러뜨리세요!', 2400);
+      return;
+    }
     this.playerSafe = true;
     this.safeIdx = k;
+    this.activeSafe = p;
+    this.finalBattle = false;
     this.bandStage = k;
     this.world.setActiveStage(k);
     this.checkpoint = p;
@@ -443,7 +498,12 @@ export class Game {
     this.player.heal(this.player.maxHp);
     this.water.charges = Math.max(this.water.charges, LAVA.waterCharges);
     this.stageCoins = 0;
+    this.save.resumeSafe = k;
+    this.save.resumeAtBoss = false;
     if (k > this.save.lastSafe) {
+      const reward = ECON.floorReward(k);
+      this.save.coins += reward;
+      this.hud.setCoins(this.save.coins);
       this.save.lastSafe = k;
       this.save.best = Math.max(this.save.best || 0, k);
       this.markDirty(true);
@@ -458,7 +518,7 @@ export class Game {
           if (this.state === 'play') { this.state = 'clear'; this.input.clearAll(); this.screens.showClear({ ...this.stats, coins: this.save.coins }); }
         }, 2200);
       } else {
-        this.hud.toast(`✅ 안전구역 ${k} 도착! 상자를 열어보자`, 2200);
+        this.hud.toast(`✅ ${k}층 클리어! +${reward} 코인 · 상자를 열어보자`, 2400);
       }
     } else {
       this.markDirty();
@@ -488,10 +548,21 @@ export class Game {
   respawn() {
     const cp = this.checkpoint;
     const P = this.player;
+    if (cp.type === 'sanctuary') {
+      this.resetToSafe(9, cp);
+      this.state = 'play';
+      this.input.clearAll();
+      this.refreshSlots();
+      for (const a of this.acids) { this.scene.remove(a.mesh); disposeWorld(a.mesh); }
+      this.acids = [];
+      const boss = this.zombies.find((z) => z.def.finalBoss && !z.dead);
+      if (boss) boss.resetForBattle();
+      this.hud.toast('❄️ 보스 앞 안전구역에서 재도전!', 1800);
+      return;
+    }
     P.reset(cp.x, cp.maxY + 0.05, cp.z, Math.atan2(cp.next.x, cp.next.z));
     this.curGround = null;
     this.pending = null;
-    this.reloading = 0;
     this.playerSafe = cp.type === 'safe';
     if (cp.type === 'safe') {
       this.lava.setIdle(cp.maxY - LAVA.startGap);
@@ -521,19 +592,14 @@ export class Game {
       this.slot = i >= 0 ? i : 0;
     }
     this.player.setWeapon(this.currentWeapon);
-    const w = this.currentWeapon;
-    if (w && wdef(w).kind === 'gun' && w.ammo === undefined) w.ammo = wdef(w).mag;
   }
 
   switchSlot(i) {
     const uid = this.save.equipped[i];
     if (!uid || i === this.slot) return;
     this.slot = i;
-    this.reloading = 0;
     this.pending = null;
     this.player.setWeapon(this.currentWeapon);
-    const w = this.currentWeapon;
-    if (w && wdef(w).kind === 'gun' && w.ammo === undefined) w.ammo = wdef(w).mag;
     this.audio.play('ui');
   }
 
@@ -544,13 +610,6 @@ export class Game {
     if (s >= 0) this.switchSlot(s);
     if (this.input.consumeWater()) this.useWater();
 
-    if (this.reloading > 0) {
-      this.reloading -= dt;
-      if (this.reloading <= 0) {
-        const w = this.currentWeapon;
-        if (w) w.ammo = wdef(w).mag;
-      }
-    }
     if (this.pending) {
       this.pending.t -= dt;
       if (this.pending.t <= 0) { this.applyMelee(this.pending); this.pending = null; }
@@ -559,7 +618,7 @@ export class Game {
     const w = this.currentWeapon;
     const pressed = this.input.consumeAttack();
     if (!w || !P.alive) return;
-    if ((pressed || this.input.attackHeld) && this.cd <= 0 && this.reloading <= 0) this.startAttack(w);
+    if ((pressed || this.input.attackHeld) && this.cd <= 0) this.startAttack(w);
   }
 
   /**
@@ -604,25 +663,13 @@ export class Game {
       this.pending = { t: d.windup, w, yaw: P.facing };
       this.audio.play(d.shape === 'line' ? 'whip' : 'swing');
     } else {
-      if (w.ammo === undefined) w.ammo = d.mag;
-      if (w.ammo <= 0) { this.startReload(w); return; }
       const t = this.findTarget(Math.min(d.range, 24), 45, 7);
       if (t) P.faceDir(t.body.x - b.x, t.body.z - b.z, 0.3);
       else P.faceLock = 0.25;
-      w.ammo--;
       this.cd = d.interval;
       P.startSwing(0.18, 'gun');
       this.fireGun(w, d, t);
-      if (w.ammo <= 0) this.startReload(w);
     }
-  }
-
-  startReload(w) {
-    const d = wdef(w);
-    if (this.reloading > 0) return;
-    this.reloading = d.reload;
-    this.audio.play('reload');
-    this.hud.toast('재장전…', 500);
   }
 
   applyMelee(pend) {
@@ -737,6 +784,14 @@ export class Game {
 
   onZombieKilled(z, o) {
     this.stats.kills++;
+    if (z.def.finalBoss) {
+      this.save.finalBossDefeated = true;
+      this.finalBattle = false;
+      this.markDirty(true);
+      this.hud.toast('👑 용암 군주 격파! 다음 안전구역에서 성채 해방', 3500);
+      this.audio.play('rare');
+      this.fx.confetti(z.body.x, z.body.y + 2, z.body.z);
+    }
     const zb = z.body;
     const w = o.weapon || this.currentWeapon;
     let total = z.coin;
@@ -756,8 +811,8 @@ export class Game {
       this.pickups.push({ type: 'heal', mesh, x: zb.x, y: zb.y, z: zb.z, stage: z.stageIdx ?? 0, fixed: true, taken: false, value: 25, life: 20 });
       mesh.position.set(zb.x, zb.y + 0.9, zb.z);
     }
-    this.fx.burst(zb.x, zb.y + 1, zb.z, 0x6fa05a, 10, 5, 0.5);
-    if (z.def.boss) {
+    this.fx.burst(zb.x, zb.y + 1, zb.z, 0xff7a32, 10, 5, 0.5);
+    if (z.def.boss && !z.def.finalBoss) {
       this.hud.toast('👑 보스 처치!', 2000);
       this.cam.shake = 1;
     }
@@ -779,7 +834,7 @@ export class Game {
   // 투사체 / 아이템
   // ------------------------------------------------------------------
   spawnAcid(x, y, z, target, dmg) {
-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: 0xb6ff3a }));
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff823d }));
     mesh.position.set(x, y, z);
     this.scene.add(mesh);
     const tx = target.x - x; const ty = target.y + 1.1 - y; const tz = target.z - z;
@@ -808,7 +863,7 @@ export class Game {
         }
       }
       if (dead) {
-        this.fx.burst(a.x, a.y, a.z, 0xb6ff3a, 5, 3, 0.3);
+        this.fx.burst(a.x, a.y, a.z, 0xff823d, 5, 3, 0.3);
         this.scene.remove(a.mesh);
         a.mesh.geometry.dispose();
         a.mesh.material.dispose();
@@ -972,11 +1027,11 @@ export class Game {
   updateContext() {
     const buttons = [];
     if (this.playerSafe && this.state === 'play') {
-      const sz = this.tower.safeZones[this.safeIdx];
+      const sz = this.activeSafe;
       const pb = this.player.body;
       if (sz && sz.safe) {
         const near = (pt, r) => Math.hypot(pb.x - pt.x, pb.z - pt.z) < r;
-        if (this.safeIdx >= 1 && !this.save.openedChests.includes(this.safeIdx) && near(sz.safe.chest, 5)) {
+        if (sz.safe.chest && this.safeIdx >= 1 && !this.save.openedChests.includes(this.safeIdx) && near(sz.safe.chest, 5)) {
           buttons.push({ id: 'chest', label: '📦 상자 열기', onTap: () => this.openChestUi(this.safeIdx) });
         }
         if (near(sz.safe.forge, 5.5)) {
@@ -1021,6 +1076,10 @@ export class Game {
     if (!canUpgrade(w) || this.save.coins < cost) return false;
     this.save.coins -= cost;
     w.level++;
+    if (w === this.currentWeapon) this.player.setWeapon(w);
+    const b = this.player.body;
+    this.fx.ring(b.x, b.y + 0.1, b.z, 1.5, w.level === ECON.maxLevel ? 0xffda63 : 0x64f5de, 0.6, true);
+    this.fx.burst(b.x, b.y + 1.3, b.z, 0xffda63, 12, 3.5, 0.6, 0.1);
     this.markDirty(true);
     this.hud.setCoins(this.save.coins);
     return true;
@@ -1048,7 +1107,7 @@ export class Game {
     if (s.weapons.length <= 1) return;
     const w = weaponByUid(s, uid);
     if (!w) return;
-    s.coins += sellValue(w) + w.level * 10;
+    s.coins += sellPrice(w);
     s.weapons = s.weapons.filter((x) => x.uid !== uid);
     s.equipped = s.equipped.map((u) => (u === uid ? null : u));
     if (!s.equipped.some((u) => u)) s.equipped[0] = s.weapons[0].uid;
@@ -1071,7 +1130,7 @@ export class Game {
 
     if (this.state === 'title') {
       // 타이틀 배경: 시작 안전구역 주변을 천천히 선회
-      const sz = this.tower.safeZones[this.save.lastSafe || 0];
+      const sz = this.tower.safeZones[this.save.resumeSafe || 0];
       this.cam.yaw += dt * 0.12;
       this.cam.pitch = 0.3;
       this.cam.target.set(sz.x, sz.maxY + 2, sz.z);
@@ -1099,13 +1158,15 @@ export class Game {
 
     // HUD
     this.hud.setHp(P.hp, P.maxHp);
+    const finalBoss = this.finalBattle ? this.zombies.find((z) => z.def.finalBoss && !z.dead) : null;
+    this.hud.setBoss(finalBoss);
     const gap = b.y - this.lava.y;
     this.hud.setLava(gap, this.lava.state, LAVA.warnGap);
     this.hud.setVignette(this.vig || 0);
     this.hud.setWater(this.water.charges, this.lava.state !== 'idle' && this.water.cd <= 0);
     this.hud.setCoins(this.save.coins);
     const eq = this.save.equipped.map((u) => (u ? weaponByUid(this.save, u) : null));
-    this.hud.renderSlots(eq, this.slot, (w) => (this.reloading > 0 && w === this.currentWeapon ? '…' : `${w.ammo ?? wdef(w).mag}`));
+    this.hud.renderSlots(eq, this.slot);
     if (this.debug) {
       this.hud.debug(`fps ${(1 / Math.max(dt, 0.001)).toFixed(0)}  y ${b.y.toFixed(1)}  lava ${this.lava.y.toFixed(1)} (${this.lava.state})\ngap ${gap.toFixed(1)}  stage ${this.bandStage}  zombies ${this.zombies.length}`);
     }

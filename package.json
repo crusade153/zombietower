@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "test": "vitest run",
-    "test:visual": "node scripts/verify-visuals.mjs"
+    "test:visual": "node scripts/verify-visuals.mjs",
+    "godot:data": "node scripts/export-godot.mjs",
+    "ipad": "node scripts/serve-ipad.mjs"
   },
   "dependencies": {
     "lucide": "^1.50.0",

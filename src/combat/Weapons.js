@@ -18,6 +18,23 @@ export function upgradeCost(w) {
 export const canUpgrade = (w) => w.level < ECON.maxLevel;
 export const sellValue = (w) => ECON.sellValue[w.rarity];
 
+export function sellPrice(w) {
+  let spent = 0;
+  for (let level = 0; level < w.level; level++) spent += upgradeCost({ ...w, level });
+  return sellValue(w) + Math.floor(spent * 0.5);
+}
+
+export function weaponAppearance(w) {
+  const level = Math.max(0, Math.min(ECON.maxLevel, w.level || 0));
+  const tier = level >= 10 ? 4 : level >= 7 ? 3 : level >= 4 ? 2 : level >= 1 ? 1 : 0;
+  return {
+    tier, level,
+    name: ['기본형', '강철 보강', '룬 각인', '플라즈마', '황금 각성'][tier],
+    color: [RARITY[w.rarity].color, '#c8e5ff', '#64f5de', '#c49aff', '#ffda63'][tier],
+    next: [1, 4, 7, 10, null][tier],
+  };
+}
+
 /** 초당 피해(참고용 표시) */
 export function weaponDps(w) {
   const d = WEAPONS[w.kind];

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  weaponDamage, upgradeCost, canUpgrade, chestOdds, rollRarity, rollWeapon, sellValue,
+  weaponDamage, upgradeCost, canUpgrade, chestOdds, rollRarity, rollWeapon, sellValue, sellPrice,
 } from '../src/combat/Weapons.js';
-import { WEAPONS, WEAPON_KINDS } from '../src/config/weapons.js';
+import { WEAPONS, WEAPON_KINDS, RARITY } from '../src/config/weapons.js';
 import { ECON, TOWER, LAVA } from '../src/config/balance.js';
 import { generateTower } from '../src/world/TowerGenerator.js';
 import { ZOMBIES, hpScale, coinScale } from '../src/config/zombies.js';
@@ -22,7 +22,7 @@ describe('무기·강화', () => {
   it('등급과 강화 레벨이 오를수록 공격력이 오른다', () => {
     for (const k of WEAPON_KINDS) {
       let prev = 0;
-      for (let r = 0; r < 4; r++) {
+      for (let r = 0; r < RARITY.length; r++) {
         const d = weaponDamage(W(k, r));
         expect(d).toBeGreaterThan(prev);
         prev = d;
@@ -50,7 +50,8 @@ describe('보물상자 확률', () => {
     for (let s = 1; s <= TOWER.stages; s++) {
       const o = chestOdds(s);
       expect(o.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6);
-      const high = o[2] + o[3];
+      expect(o).toHaveLength(7);
+      const high = o.slice(3).reduce((a, b) => a + b, 0);
       expect(high).toBeGreaterThanOrEqual(prevHigh);
       prevHigh = high;
     }
@@ -60,19 +61,18 @@ describe('보물상자 확률', () => {
     for (const stage of [1, 10]) {
       const rng = makeRng(stage * 99);
       const n = 40000;
-      const cnt = [0, 0, 0, 0];
+      const cnt = Array(RARITY.length).fill(0);
       for (let i = 0; i < n; i++) cnt[rollRarity(stage, rng)]++;
       const o = chestOdds(stage);
-      for (let r = 0; r < 4; r++) expect(Math.abs(cnt[r] / n - o[r] / 100)).toBeLessThan(0.012);
+      for (let r = 0; r < RARITY.length; r++) expect(Math.abs(cnt[r] / n - o[r] / 100)).toBeLessThan(0.012);
     }
-    // 1층 상자에서는 전설이 나오지 않는다
-    const rng = makeRng(5);
-    for (let i = 0; i < 5000; i++) expect(rollRarity(1, rng)).toBeLessThan(3);
+    expect(chestOdds(1)[6]).toBe(7);
+    expect(chestOdds(10)[6]).toBe(28);
   });
 
-  it('보스층 상자는 영웅 이상 확정', () => {
+  it('보스층 상자는 신화 이상 확정', () => {
     const rng = makeRng(11);
-    for (let i = 0; i < 3000; i++) expect(rollWeapon(5, rng, true).rarity).toBeGreaterThanOrEqual(2);
+    for (let i = 0; i < 3000; i++) expect(rollWeapon(5, rng, true).rarity).toBeGreaterThanOrEqual(3);
   });
 
   it('중복 판매가가 등급이 높을수록 크다', () => {
@@ -81,7 +81,7 @@ describe('보물상자 확률', () => {
 });
 
 describe('경제 밸런스 (참고 수치)', () => {
-  it('한 번 플레이로 벌 수 있는 코인으로 강화를 몇 번 할 수 있는지 확인', () => {
+  it('첫 층의 보상으로 일반 무기를 최대 강화하고 전설도 부담 없이 강화한다', () => {
     const t = generateTower(2024);
     let total = 0;
     const perStage = [];
@@ -91,12 +91,24 @@ describe('경제 밸런스 (참고 수치)', () => {
       perStage.push(Math.round(c));
       total += c;
     }
-    // 코인이 너무 적거나(강화 불가) 너무 많으면(무한 강화) 안 된다
     const firstUpgrade = upgradeCost(W('bat', 0, 0));
-    expect(perStage[0]).toBeGreaterThan(firstUpgrade * 0.5); // 1층에서 첫 강화가 거의 가능
+    expect(firstUpgrade).toBeLessThanOrEqual(10);
     const maxBat = Array.from({ length: ECON.maxLevel }, (_, l) => upgradeCost(W('bat', 0, l))).reduce((a, b) => a + b, 0);
-    expect(total).toBeGreaterThan(maxBat * 0.3);
-    expect(total).toBeLessThan(maxBat * 6);
+    expect(perStage[0] + ECON.floorReward(1)).toBeGreaterThan(maxBat);
+    expect(total).toBeGreaterThan(maxBat * WEAPON_KINDS.length);
+    const maxLegendary = Array.from({ length: ECON.maxLevel }, (_, l) => upgradeCost(W('bat', 4, l))).reduce((a, b) => a + b, 0);
+    expect(maxLegendary).toBeLessThan(750);
+    expect(ECON.floorReward(1)).toBeGreaterThan(upgradeCost(W('bat', 3, 0)) * 5);
+  });
+
+  it('값싼 강화를 반복해서 판매해도 강화 비용 이상으로 돌려받지 않는다', () => {
+    for (let rarity = 0; rarity < RARITY.length; rarity++) {
+      let spent = 0;
+      for (let level = 1; level <= ECON.maxLevel; level++) {
+        spent += upgradeCost(W('bat', rarity, level - 1));
+        expect(sellPrice(W('bat', rarity, level)) - sellValue(W('bat', rarity))).toBeLessThanOrEqual(spent * 0.5);
+      }
+    }
   });
 
   it('좀비 체력 곡선: 10층이 1층의 2배대', () => {

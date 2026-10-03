@@ -55,9 +55,18 @@ describe('타워 생성기', () => {
   it('보스는 5, 10층에만 있다', () => {
     const t = generateTower(3);
     t.stages.forEach((st) => {
-      const has = st.zombies.some((z) => z.type === 'boss');
+      const has = st.zombies.some((z) => z.type === 'boss' || z.type === 'finalBoss');
       expect(has).toBe(st.index === 5 || st.index === 10);
     });
+  });
+
+  it('10층 최종 보스 직전에는 몬스터가 없는 저장 구역이 있다', () => {
+    const t = generateTower(3);
+    const prep = t.bossSanctuary;
+    expect(prep.type).toBe('sanctuary');
+    expect(t.chain[t.chain.indexOf(prep) + 1]).toBe(t.finalArena);
+    expect(t.stages[9].zombies.some((z) => z.platform.id === prep.id)).toBe(false);
+    expect(t.stages[9].zombies.some((z) => z.type === 'finalBoss' && z.platform.id === t.finalArena.id)).toBe(true);
   });
 });
 

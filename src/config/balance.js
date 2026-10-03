@@ -59,16 +59,19 @@ export const PLAYER = {
 };
 
 export const ECON = {
-  upgradeBase: 40,
-  upgradeGrowth: 1.35,
+  upgradeBase: 8,
+  upgradeGrowth: 1.22,
   upgradeDmgPerLevel: 0.12,
   maxLevel: 10,
-  sellValue: [20, 50, 120, 300], // 중복 무기 판매가(등급별)
+  zombieRewardMult: 6,
+  airCoinRewardMult: 10,
+  floorReward: (floor) => 150 + floor * 50,
+  sellValue: [60, 150, 360, 600, 900, 1400, 2200], // 중복 무기 판매가(등급별)
 };
 
-// 상자 등급 확률(층 1 → 10 선형 보간). [일반, 희귀, 영웅, 전설]
+// [일반, 레어, 에픽, 신화, 전설, 천상, 무적]. 최상위도 1층부터 획득 가능.
 export const CHEST_ODDS = {
-  first: [70, 25, 5, 0],
-  last: [10, 35, 40, 15],
-  bossMinRarity: 2,
+  first: [25, 20, 18, 12, 10, 8, 7],
+  last: [4, 6, 10, 12, 18, 22, 28],
+  bossMinRarity: 3,
 };

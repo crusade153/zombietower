@@ -129,6 +129,22 @@ button:focus-visible { outline: 3px solid #f47893; outline-offset: 4px; }
 .card .eq { position: absolute; left: 6px; top: 4px; font-size: 11px; font-weight: 900; background: #335752; color: #fff; border-radius: 3px; padding: 0 5px; }
 .detail { text-align: left; border-left: 1px solid #c9dbd4; padding: 10px 16px; min-width: 220px; font-size: 15px; line-height: 1.7; }
 .detail b { color: #329681; }
+.lobby-secondary { display: flex; align-items: center; gap: 16px; }
+.floor-panel { width: min(660px, 96vw); }
+.floor-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 20px 0; }
+.floor-button { display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 74px; border: 2px solid #5e9489; border-radius: 10px; background: #d9f5e9; color: #264e49; padding: 10px 6px; }
+.floor-button b { font-size: 21px; }
+.floor-button small { font-size: 12px; }
+.floor-button.current { background: #ffe071; border-color: #335752; }
+.floor-button[disabled] { opacity: .42; background: #d9e3e0; cursor: default; }
+.appearance-badge { display: inline-block; margin: 10px 0 0; padding: 4px 10px; background: #29434f; color: var(--upgrade-color); border: 1px solid var(--upgrade-color); border-radius: 6px; font-weight: 900; }
+#boss-health { position: absolute; top: 94px; left: 50%; transform: translateX(-50%); width: min(440px, 80vw); background: #261c31ed; border: 1px solid #ff8d60; border-radius: 8px; padding: 10px 14px; text-align: center; color: #ffe9d1; }
+#boss-health b { font-size: 16px; }
+#boss-health small { font-size: 11px; }
+.boss-track { height: 10px; margin: 7px 0; background: #472737; border-radius: 6px; overflow: hidden; }
+.boss-track span { display: block; height: 100%; background: linear-gradient(90deg, #db3b47, #ffb345); transition: width .15s; }
+.panel .appearance-hint { font-size: 12px; margin: 4px 0 10px; }
+@media (max-width: 420px) { .floor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .chest-stage { position: relative; height: 200px; display: grid; place-items: center; }
 .chest-ico { font-size: 100px; transition: transform .3s; }
 .chest-ico.shake { animation: shake .5s infinite; }

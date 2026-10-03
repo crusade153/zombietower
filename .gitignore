@@ -3,3 +3,10 @@ dist/
 .claude/
 *.log
 artifacts/visual-checks/
+.tools/
+godot/.godot/
+godot/.data/
+godot/saves/
+godot/builds/
+godot/artifacts/
+godot/web/

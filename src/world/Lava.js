@@ -33,11 +33,13 @@ void main() {
   float n1 = fbm(p + vec2(t, t * 0.6));
   float n2 = fbm(p * 1.9 + vec2(-t * 0.8, t) + n1 * 1.5);
   float veins = smoothstep(0.4, 0.56, n2);
-  vec3 deep = vec3(0.95, 0.22, 0.19);
-  vec3 hot = vec3(1.0, 0.76, 0.28);
+  vec3 deep = vec3(0.28, 0.035, 0.045);
+  vec3 hot = vec3(1.0, 0.62, 0.12);
   vec3 col = mix(deep, hot, veins);
   float crust = smoothstep(0.55, 0.8, noise(p * 6.0 + t));
-  col = mix(col, vec3(0.65, 0.12, 0.17), crust * 0.4);
+  col = mix(col, vec3(0.08, 0.055, 0.075), crust * 0.65);
+  float cracks = 1.0 - smoothstep(0.025, 0.09, abs(n2 - 0.5));
+  col += vec3(1.0, 0.42, 0.035) * cracks * 0.65;
   col += vec3(0.25, 0.08, 0.0) * (0.5 + 0.5 * sin(uTime * 2.0 + n2 * 8.0)) * 0.25;
   vec3 obs = mix(vec3(0.2, 0.65, 0.8), vec3(0.69, 0.93, 1.0), noise(vWorld.xz * 0.6));
   col = mix(col, obs, uFrozen);

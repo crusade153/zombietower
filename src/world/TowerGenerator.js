@@ -1,4 +1,4 @@
-import { TOWER } from '../config/balance.js';
+import { TOWER, ECON } from '../config/balance.js';
 import { makeRng } from '../core/rng.js';
 import { maxReach, maxJumpHeight, setBounds, aabbDistXZ, extremes } from '../core/physics.js';
 import { zombieWeights } from '../config/zombies.js';
@@ -154,6 +154,7 @@ function buildTower(seed) {
 
     for (let i = 0; i <= N; i++) {
       const isArena = stage.boss && i === N; // 보스 경기장은 안전구역 직전
+      const isSanctuary = s === 10 && i === N - 1;
       if (i === N && !isArena) continue; // 일반 층: 마지막은 안전구역으로 대체
       const d = clamp(((s - 1) + i / N) / TOWER.stages, 0, 1);
       const isFirst = i === 0;
@@ -162,7 +163,7 @@ function buildTower(seed) {
       const isRest = !isCheckpoint && !isFirst && !isArena && i % 7 === 6 && i < N - 1;
 
       let type = 'static';
-      if (!isFirst && !isCheckpoint && !isRest && !isArena) type = rng.weighted(pickTypeWeights(s, d));
+      if (!isFirst && !isCheckpoint && !isRest && !isArena && !isSanctuary) type = rng.weighted(pickTypeWeights(s, d));
       // 타이밍 발판(무너짐/깜빡임) 두 개가 연달아 나오면 불공정하므로 막는다
       if ((prev.type === 'falling' || prev.type === 'blink') && (type === 'falling' || type === 'blink')) type = 'static';
 
@@ -174,6 +175,7 @@ function buildTower(seed) {
         if (attempt >= 7) curType = 'static'; // 재시도가 길어지면 정적 발판
         const base = TOWER.halfSize(d);
         if (isArena) { hx = hz = 7.5; curType = 'arena'; }
+        else if (isSanctuary) { hx = hz = 6; curType = 'sanctuary'; }
         else if (isCheckpoint) { hx = hz = 3.2; curType = 'checkpoint'; }
         else if (isRest) { hx = rng.range(3.0, 3.6); hz = rng.range(3.0, 3.6); curType = 'rest'; }
         else if (isFirst) { hx = hz = Math.max(base, 2.4); }
@@ -226,8 +228,16 @@ function buildTower(seed) {
         if (!pos) { why.push('위치없음'); continue; }
         const cand = makePlatform({
           type: curType, x: pos.x, top, z: pos.z, hx, hz, motion,
-          checkpoint: isCheckpoint || isArena, stage: s,
+          checkpoint: isCheckpoint || isArena || isSanctuary, stage: s,
         });
+        if (isSanctuary) {
+          cand.safe = {
+            stage: 10, bossPrep: true,
+            spawn: { x: cand.x, y: top, z: cand.z },
+            forge: { x: cand.x + 3.4, y: top, z: cand.z },
+            water: { x: cand.x - 3.4, y: top, z: cand.z },
+          };
+        }
         if (curType === 'conveyor') {
           const tg = tangentAt(prev.x, prev.z);
           const axis = Math.abs(tg.x) > Math.abs(tg.z) ? 'x' : 'z';
@@ -245,6 +255,8 @@ function buildTower(seed) {
 
       if (isCheckpoint || isArena) sinceCheckpoint = 0;
       stage.platforms.push(made);
+      if (isSanctuary) tower.bossSanctuary = made;
+      if (isArena && s === 10) tower.finalArena = made;
       tower.platforms.push(made);
       prev = made;
     }
@@ -318,7 +330,7 @@ export function generateTower(seed = 1) {
 function populateStage(stage, rng) {
   const s = stage.index;
   const plats = stage.platforms;
-  const eligible = plats.filter((p, i) => i >= 3 && !p.motion && p.type !== 'falling' && p.type !== 'beam' && p.type !== 'arena' && Math.min(p.hx, p.hz) >= 1.6);
+  const eligible = plats.filter((p, i) => i >= 3 && !p.motion && !['falling', 'beam', 'arena', 'sanctuary'].includes(p.type) && Math.min(p.hx, p.hz) >= 1.6);
   const want = Math.round(4 + 1.3 * s);
   const w = zombieWeights(s);
   const pool = eligible.slice();
@@ -341,7 +353,7 @@ function populateStage(stage, rng) {
   }
   if (stage.boss) {
     const arena = plats[plats.length - 1];
-    stage.zombies.push({ type: 'boss', platform: arena, x: arena.x, y: arena.maxY, z: arena.z, boss: true });
+    stage.zombies.push({ type: s === 10 ? 'finalBoss' : 'boss', platform: arena, x: arena.x, y: arena.maxY, z: arena.z, boss: true });
     for (let k = 0; k < 3; k++) {
       stage.zombies.push({
         type: rng.weighted(w), platform: arena,
@@ -386,7 +398,7 @@ function populateStage(stage, rng) {
 
   // 공중 코인: 점프 구간에 아치 모양으로 3개 (정밀하게 점프할수록 모음)
   const arr = [stage.entry, ...plats];
-  const value = Math.max(1, Math.round(s * 0.5));
+  const value = Math.max(1, Math.round(s * 0.5)) * ECON.airCoinRewardMult;
   for (let i = 0; i + 1 < arr.length && stage.aircoins.length < 18; i++) {
     const a = arr[i]; const b = arr[i + 1];
     const bad = (q) => q.motion || q.type === 'falling' || q.type === 'blink';

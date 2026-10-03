@@ -39,6 +39,7 @@ export class Zombie {
     this.animT = Math.random() * 6;
     this.jumpCd = 0;
     this.growlT = 2 + Math.random() * 5;
+    this.phase = 1;
 
     const h = makeHumanoid({
       skin: d.colors.skin, shirt: d.colors.shirt, pants: d.colors.pants, scale: d.scale, zombie: true, ownMaterials: true, variant: type,
@@ -69,6 +70,7 @@ export class Zombie {
   /** @returns 사망 여부 */
   takeDamage(g, dmg, o = {}) {
     if (this.dead) return false;
+    if (this.def.finalBoss && !g.finalBattle) return false;
     this.hp -= dmg;
     this.flashT = 0.12;
     this.alerted = true;
@@ -95,6 +97,20 @@ export class Zombie {
     if (!o.silent) g.onZombieKilled(this, o);
   }
 
+  resetForBattle() {
+    const p = this.home;
+    if (!p || this.dead) return;
+    this.hp = this.maxHp;
+    this.phase = 1;
+    this.body.x = p.x; this.body.y = p.maxY; this.body.z = p.z;
+    this.body.vx = this.body.vy = this.body.vz = 0;
+    this.body.ground = null; this.body.grounded = false;
+    this.kn.x = this.kn.z = this.mv.x = this.mv.z = 0;
+    this.alerted = false;
+    this.state = 'idle'; this.timer = 0;
+    this.burnT = this.slowT = 0;
+  }
+
   update(dt, g) {
     const b = this.body;
     const P = g.player;
@@ -105,6 +121,13 @@ export class Zombie {
       this.root.rotation.x = -Math.min(1.5, this.dying * 4);
       if (this.dying > 1.2) this.removed = true;
       return;
+    }
+    if (this.def.finalBoss && !g.finalBattle) return;
+    if (this.def.finalBoss && this.phase === 1 && this.hp <= this.maxHp * 0.5) {
+      this.phase = 2;
+      g.hud.toast('🔥 이그니스 폭주! 화염탄과 충격파를 피하세요!', 2400);
+      g.fx.ring(b.x, b.y + 0.05, b.z, 6, 0xff4d38, 0.9, true);
+      g.cam.shake = 0.8;
     }
 
     // 상태이상
@@ -118,8 +141,8 @@ export class Zombie {
     }
     this.jumpCd = Math.max(0, this.jumpCd - dt);
 
-    // 용암 사망
-    if (!g.lava.frozen && b.y < g.lava.y - 0.2) {
+    // 용암에서 태어난 몬스터는 불에 면역. 낙하로 이탈하면 정리한다.
+    if (!this.def.finalBoss && !g.lava.frozen && b.y < g.lava.y - 8) {
       this.die(g, { silent: true });
       g.fx.burst(b.x, g.lava.y + 0.3, b.z, 0xff7a1a, 10, 5, 0.6);
       return;
@@ -138,7 +161,7 @@ export class Zombie {
     }
     if (this.alerted && (!playerOk || (!this.climber && dist > 28))) this.alerted = this.climber && playerOk;
 
-    const speed = this.def.speed * (this.slowT > 0 ? 0.55 : 1) * g.difficulty.zspeed;
+    const speed = this.def.speed * (this.phase === 2 ? 1.25 : 1) * (this.slowT > 0 ? 0.55 : 1) * g.difficulty.zspeed;
     let wantX = 0; let wantZ = 0;
 
     if (this.state === 'windup') {
@@ -150,7 +173,7 @@ export class Zombie {
       if (this.timer <= 0) this.state = this.alerted ? 'chase' : 'idle';
     } else if (this.alerted && playerOk) {
       this.state = 'chase';
-      const reach = this.def.ranged ? Math.min(this.def.attackRange, 11) : this.def.attackRange;
+      const reach = this.def.finalBoss ? 13 : this.def.ranged ? Math.min(this.def.attackRange, 11) : this.def.attackRange;
       const canAttack = dist <= reach && Math.abs(dy) < (this.def.ranged ? 4 : 1.7);
       if (canAttack && b.grounded) {
         this.state = 'windup';
@@ -164,6 +187,11 @@ export class Zombie {
             g.fx.ring(b.x, b.y, b.z, 5.8, 0xff3a2a, 1.0, true);
             g.audio.play('warn');
           }
+        }
+        if (this.def.finalBoss) {
+          this.attackKind = dist > 5.8 ? 'volley' : 'slam';
+          this.timer = this.def.windup / (this.phase === 2 ? 1.15 : 1);
+          g.fx.ring(b.x, b.y + 0.03, b.z, this.attackKind === 'slam' ? 5.8 : 2, 0xff593d, this.timer, true);
         }
       } else if (!this.climber || this.sameBand(P)) {
         const l = dist || 1;
@@ -251,14 +279,24 @@ export class Zombie {
     const P = g.player;
     const d = this.def;
     this.state = 'cooldown';
-    this.timer = d.cooldown;
+    this.timer = d.cooldown / (this.phase === 2 ? 1.35 : 1);
+    if (g.playerSafe || !P.alive) return;
+    if (this.attackKind === 'volley') {
+      g.audio.play('spit');
+      const count = this.phase === 2 ? 5 : 3;
+      for (let i = 0; i < count; i++) {
+        const offset = (i - (count - 1) / 2) * 1.6;
+        g.spawnAcid(b.x, b.y + 2.2, b.z, { x: P.body.x + offset, y: P.body.y, z: P.body.z - offset }, this.dmg);
+      }
+      return;
+    }
     if (this.attackKind === 'slam') {
       g.audio.play('slam');
       g.cam.shake = Math.max(g.cam.shake, 0.8);
       g.fx.ring(b.x, b.y, b.z, 5.8, 0xffa040, 0.4);
       g.fx.burst(b.x, b.y + 0.2, b.z, 0xffa040, 18, 7, 0.6);
       const pb = P.body;
-      if (Math.hypot(pb.x - b.x, pb.z - b.z) < 5.8 && Math.abs(pb.y - b.y) < 2.5) {
+      if (Math.hypot(pb.x - b.x, pb.z - b.z) < 5.8 && Math.abs(pb.y - b.y) < 1.1) {
         if (P.hurt(this.dmg, b.x, b.z, 13)) g.onPlayerHurt(this.dmg);
       }
       return;
@@ -299,7 +337,7 @@ export class Zombie {
     p.armR.rotation.x = arm;
     // 피격 번쩍
     const f = this.flashT > 0 ? 0.7 : 0;
-    for (const m of this.h.materials) m.emissive.setRGB(f, f, f);
+    for (const m of this.h.materials) m.emissive.copy(m.userData.baseEmissive || new THREE.Color()).addScalar(f);
     if (this.burnT > 0) for (const m of this.h.materials) m.emissive.setRGB(0.5, 0.18, 0);
     // 체력바
     const hurt = this.hp < this.maxHp;

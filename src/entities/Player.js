@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { PHYS, PLAYER } from '../config/balance.js';
-import { WEAPONS, RARITY } from '../config/weapons.js';
+import { WEAPONS } from '../config/weapons.js';
 import { moveAndCollide } from '../core/physics.js';
-import { makeHumanoid, makeBlob, makeWeaponMesh } from '../world/models.js';
+import { makeHumanoid, makeBlob, makeWeaponMesh, disposeWorld } from '../world/models.js';
 
 export function groundYBelow(x, y, z, plats) {
   let best = null;
@@ -64,17 +64,27 @@ export class Player {
     this.alive = true;
     this.iframes = 1.2;
     this.swing = null;
+    this.lastGround = null;
+    this.wasGrounded = false;
+    this.coyote = this.jumpBuf = this.faceLock = 0;
+    this.jumping = false;
     this.root.visible = true;
     this.root.rotation.set(0, 0, 0);
     if (facing !== null) this.facing = facing;
   }
 
   setWeapon(w) {
-    if (this.weaponMesh) this.parts.hand.remove(this.weaponMesh);
+    const key = w ? `${w.uid}:${w.kind}:${w.rarity}:${w.level}` : null;
+    if (key === this.weaponKey) return;
+    this.weaponKey = key;
+    if (this.weaponMesh) {
+      this.parts.hand.remove(this.weaponMesh);
+      disposeWorld(this.weaponMesh);
+    }
     this.weaponMesh = null;
     this.weaponKind = w ? w.kind : null;
     if (!w) return;
-    this.weaponMesh = makeWeaponMesh(w.kind, parseInt(RARITY[w.rarity].color.slice(1), 16));
+    this.weaponMesh = makeWeaponMesh(w);
     this.parts.hand.add(this.weaponMesh);
   }
 
@@ -194,6 +204,12 @@ export class Player {
       arm += Math.sin(this.animT) * 0.25 * run;
     }
     p.armR.rotation.x = arm;
+    const aura = this.weaponMesh?.userData.aura;
+    if (aura) {
+      aura.rotation.z = time * 1.2;
+      aura.scale.setScalar(1 + Math.sin(time * 4) * 0.06);
+      aura.material.opacity = 0.25 + Math.sin(time * 3) * 0.08;
+    }
     // 피격 깜빡임
     this.root.visible = this.alive && !(this.iframes > 0 && Math.floor(time * 16) % 2 === 0);
     // 그림자 점

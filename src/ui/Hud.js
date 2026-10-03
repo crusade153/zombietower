@@ -19,6 +19,11 @@ export class Hud {
     this._last = {};
     this._toastT = null;
     this._ctxKey = '';
+    this.bossEl = document.createElement('div');
+    this.bossEl.id = 'boss-health';
+    this.bossEl.className = 'hidden';
+    this.bossEl.innerHTML = '<b></b><div class="boss-track"><span></span></div><small></small>';
+    this.el.hud.appendChild(this.bossEl);
     this.el.pause.innerHTML = icon('pause');
     this.el.pause.title = '일시정지';
     document.querySelector('.lava-ico').innerHTML = icon('flame');
@@ -50,6 +55,14 @@ export class Hud {
 
   setCoins(n) { this._set('coin', Math.floor(n), (v) => { this.el.coin.textContent = v.toLocaleString(); }); }
   setStage(text) { this._set('stage', text, (v) => { this.el.stage.textContent = v; }); }
+
+  setBoss(boss) {
+    this.bossEl.classList.toggle('hidden', !boss);
+    if (!boss) return;
+    this.bossEl.querySelector('b').textContent = boss.def.name;
+    this.bossEl.querySelector('span').style.width = `${Math.max(0, boss.hp / boss.maxHp * 100)}%`;
+    this.bossEl.querySelector('small').textContent = `${Math.ceil(boss.hp).toLocaleString()} / ${Math.ceil(boss.maxHp).toLocaleString()} · ${boss.phase === 2 ? '2단계 · 폭주' : '1단계'} · 불길은 점프로 회피`;
+  }
 
   /** gap: 플레이어와 용암 높이차(m). mode: 'idle' | 'rising' | 'frozen' */
   setLava(gap, mode, warnGap) {
@@ -97,7 +110,7 @@ export class Hud {
   }
 
   /** 무기 슬롯 3개 렌더 */
-  renderSlots(weapons, active, ammoOf) {
+  renderSlots(weapons, active) {
     const key = weapons.map((w) => (w ? `${w.uid}.${w.level}` : '-')).join(',') + `|${active}`;
     if (this._slotKey !== key) {
       this._slotKey = key;
@@ -117,7 +130,8 @@ export class Hud {
     weapons.forEach((w, i) => {
       const a = this.el.slots.children[i] && this.el.slots.children[i].querySelector('.ammo');
       if (!a) return;
-      const txt = w && WEAPONS[w.kind].kind === 'gun' ? ammoOf(w) : '';
+      const txt = w && WEAPONS[w.kind].kind === 'gun' ? '∞' : '';
+      a.title = txt ? '무한 탄약 · 재장전 없음' : '';
       if (a.textContent !== txt) a.textContent = txt;
     });
   }

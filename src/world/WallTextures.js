@@ -171,14 +171,43 @@ function drawSky(g, e, rng) {
   e.fillStyle = '#000'; e.fillRect(252, 70, 8, 360);
 }
 
-const DRAW = [drawDungeon, drawLibrary, drawMachine, drawObsidian, drawSky];
+function drawFrost(g, e, rng, themeIdx) {
+  const palette = [0x9dbdcf, 0x8daacb, 0xa9a6d3, 0x809fc2, 0xb8cbd9];
+  g.fillStyle = shade(palette[themeIdx], 0.68); g.fillRect(0, 0, S, S);
+  for (let row = 0; row < 12; row++) {
+    const y = row * 44;
+    for (let x = -88; x < S + 88; x += 88) {
+      const at = x + (row % 2) * 44;
+      g.fillStyle = shade(palette[themeIdx], 0.94 + rng() * 0.2);
+      g.beginPath(); g.roundRect(at + 2, y + 2, 84, 40, 4); g.fill();
+      g.fillStyle = '#e6f7ff80'; g.fillRect(at + 5, y + 3, 78, 3);
+      g.strokeStyle = '#edf9ff45'; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(at + 26, y + 6); g.lineTo(at + 40, y + 18); g.lineTo(at + 35, y + 31); g.stroke();
+    }
+  }
+  archPath(g, 256, 62, 112, 270);
+  g.fillStyle = '#426481'; g.fill();
+  g.lineWidth = 12; g.strokeStyle = '#d9eaf4'; g.stroke();
+  archPath(e, 256, 62, 112, 270);
+  const glass = e.createLinearGradient(0, 62, 0, 332);
+  glass.addColorStop(0, '#c2e6f2'); glass.addColorStop(1, '#679abd');
+  e.fillStyle = glass; e.fill();
+  e.fillStyle = '#172e45'; e.fillRect(252, 80, 8, 252); e.fillRect(205, 182, 102, 6);
+  // Snow ledges and short icicles retain the soft, rounded castle style.
+  g.fillStyle = '#ecf6ff'; g.beginPath(); g.roundRect(188, 332, 136, 11, 5); g.fill();
+  for (const x of [198, 216, 302, 318]) {
+    g.beginPath(); g.moveTo(x - 4, 341); g.lineTo(x + 4, 341); g.lineTo(x, 360 + rng() * 12); g.closePath(); g.fill();
+  }
+  g.fillStyle = '#eef8ff22';
+  for (let i = 0; i < 220; i++) { const x = rng() * S; const y = rng() * S; g.fillRect(x, y, 1.5, 1.5); }
+}
 
 /** 테마 인덱스별 {map, glow} 텍스처 */
 export function makeWallTextures(themeIdx) {
   const c1 = makeCanvas(); const c2 = makeCanvas();
   const g = c1.getContext('2d'); const e = c2.getContext('2d');
   e.fillStyle = '#000'; e.fillRect(0, 0, S, S);
-  DRAW[themeIdx](g, e, makeRng(1000 + themeIdx));
+  drawFrost(g, e, makeRng(1000 + themeIdx), themeIdx);
   const mk = (c, srgb) => {
     const t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;

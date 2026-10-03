@@ -4,7 +4,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { TOWER } from '../config/balance.js';
 import { THEMES, themeIndexForStage, themeForStage } from '../config/themes.js';
 import {
-  makeChest, makeForge, makeWaterStation, makeFlag, lambert, box, cyl, rounded,
+  makeChest, makeForge, makeWaterStation, makeFlag, lambert, metal, box, cyl, rounded, batchMeshes,
 } from './models.js';
 import { makeWallTextures } from './WallTextures.js';
 import { blinkState } from './Platforms.js';
@@ -17,9 +17,9 @@ function typeColor(p, theme, stage) {
   const t = theme.platform;
   const h = (t.h + (stage % 2) * 0.02) % 1;
   switch (p.type) {
-    case 'safe': return c.set(0xa9ddd4);
+    case 'safe': case 'sanctuary': return c.set(0xc0e5f2);
     case 'checkpoint': return c.set(0x72ddaa);
-    case 'arena': return c.set(0xf0839c);
+    case 'arena': return c.set(0x809fc4);
     case 'rest': return c.setHSL(h, t.s, Math.min(0.8, t.l + 0.1));
     case 'beam': return c.setHSL(h, t.s * 0.8, t.l * 0.75);
     case 'slider': return c.set(0xffa53a);
@@ -28,8 +28,8 @@ function typeColor(p, theme, stage) {
     case 'conveyor': return c.set(0x3a3e48);
     case 'blink': return c.set(0x8ae8ff);
     default: {
-      if (p.type === 'static' && p.id % 5 === 1) return c.set(0xffcd48);
-      if (p.type === 'static' && p.id % 5 === 3) return c.set(0xef729c);
+      if (p.type === 'static' && p.id % 5 === 1) return c.set(0xc5e9fa);
+      if (p.type === 'static' && p.id % 5 === 3) return c.set(0x9bb9e8);
       return c.setHSL(h, t.s, t.l);
     }
   }
@@ -97,9 +97,10 @@ function makeChevronTexture() {
 }
 
 export class WorldView {
-  constructor(scene, tower) {
+  constructor(scene, tower, { touchDevice = false } = {}) {
     this.scene = scene;
     this.tower = tower;
+    this.touchDevice = touchDevice;
     this.stageGroups = [];
     this.dynamic = []; // {mesh, p}
     this.safeProps = [];
@@ -108,6 +109,7 @@ export class WorldView {
     this.spinners = []; // {pivot, h}
     this.vents = []; // {flame, glow, v}
     this.torches = []; // 깜빡이는 횃불 불꽃
+    this.crystals = [];
     this.theme = 0;
     this._lastTime = 0;
     this._build();
@@ -121,14 +123,14 @@ export class WorldView {
     this.fogTarget = new THREE.Color(th0.fog);
     this.skyTarget = new THREE.Color(th0.sky);
 
-    this.hemi = new THREE.HemisphereLight(th0.sky, 0x6d88a1, 1.55);
+    this.hemi = new THREE.HemisphereLight(th0.sky, 0x43566e, 1.1);
     scene.add(this.hemi);
-    const sun = new THREE.DirectionalLight(0xfff2df, 2.2);
+    const sun = new THREE.DirectionalLight(0xfff2df, 2.6);
     sun.position.set(-30, 80, 20);
     scene.add(sun);
     this.sun = sun;
     sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.mapSize.set(this.touchDevice ? 1024 : 2048, this.touchDevice ? 1024 : 2048);
     Object.assign(sun.shadow.camera, { left: -18, right: 18, top: 18, bottom: -18, near: 1, far: 90 });
     sun.shadow.normalBias = 0.08;
     sun.shadow.bias = -0.0003;
@@ -161,7 +163,7 @@ export class WorldView {
     const eg = new THREE.BufferGeometry();
     eg.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(N * 3), 3));
     this.embers = new THREE.Points(eg, new THREE.PointsMaterial({
-      color: 0xffa040, size: 3.2, sizeAttenuation: false, transparent: true, opacity: 0.85, fog: false, depthWrite: false,
+      color: 0xe6f6ff, size: 2.4, sizeAttenuation: false, transparent: true, opacity: 0.8, fog: false, depthWrite: false,
     }));
     this.embers.frustumCulled = false;
     scene.add(this.embers);
@@ -170,7 +172,7 @@ export class WorldView {
     const topY = tower.safeZones[tower.safeZones.length - 1].maxY;
     const pillarTop = topY + 14;
     const pillarH = pillarTop + 100;
-    scene.add(cyl(TOWER.pillarRadius, pillarH, lambert(0x8898ad), 0, (pillarTop - 100) / 2, 0));
+    scene.add(cyl(TOWER.pillarRadius * 0.65, pillarH, metal(0x466276, 0.4), 0, (pillarTop - 100) / 2, 0));
     const rings = [];
     for (let y = 4; y < topY + 20; y += 7) rings.push(y);
     const ringMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 24), lambert(0x92dbcf), rings.length);
@@ -194,7 +196,7 @@ export class WorldView {
 
     this._buildShell(topY);
 
-    const solidMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+    const solidMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.12 });
     const lineMat = new THREE.LineBasicMaterial({ color: 0xeafff3, transparent: true, opacity: 0.35 });
     const chevron = makeChevronTexture();
     const torchMat = new THREE.MeshBasicMaterial({ color: 0xffb040 });
@@ -220,6 +222,7 @@ export class WorldView {
       const theme = themeForStage(st.index);
       const statics = [];
       const lines = [];
+      const details = new THREE.Group();
       for (const p of st.platforms) {
         const color = typeColor(p, theme, st.index);
         if (p.belt) {
@@ -244,6 +247,7 @@ export class WorldView {
           mesh.position.set(p.x, p.y, p.z);
           group.add(mesh);
           this.blinkMeshes.push({ mesh, p });
+          mesh.add(this._platformDetail(p));
         } else if (p.motion || p.type === 'falling') {
           const geo = colorBox(p, color, false);
           const mesh = new THREE.Mesh(geo, solidMat);
@@ -257,15 +261,22 @@ export class WorldView {
           mesh.add(new THREE.LineSegments(lg, lineMat));
           group.add(mesh);
           this.dynamic.push({ mesh, p });
+          mesh.add(this._platformDetail(p));
         } else {
           statics.push(colorBox(p, color, true));
           topOutline(p, lines);
+        }
+        if (!p.motion && p.type !== 'falling' && !p.blink) {
+          const detail = this._platformDetail(p);
+          detail.position.set(p.bx, p.by, p.bz);
+          details.add(detail);
         }
         if (p.type === 'checkpoint') {
           const flag = makeFlag();
           flag.position.set(p.x - p.hx * 0.6, p.maxY, p.z - p.hz * 0.6);
           group.add(flag);
         }
+        if (p.type === 'sanctuary') group.add(this._buildSafeProps(p, 10, theme));
         if (p.type === 'checkpoint' || p.type === 'rest') {
           // 모서리 횃불 기둥
           for (const [sx, sz] of [[1, 1], [-1, -1]]) {
@@ -303,6 +314,7 @@ export class WorldView {
         group.add(mesh);
         statics.forEach((geo) => geo.dispose());
       }
+      group.add(batchMeshes(details));
       if (lines.length) {
         const lg = new THREE.BufferGeometry();
         lg.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
@@ -314,6 +326,23 @@ export class WorldView {
     });
   }
 
+  _platformDetail(p) {
+    const g = new THREE.Group();
+    const rim = metal(0x506b7b, 0.45);
+    const light = lambert(p.type === 'checkpoint' ? 0x78ffc5 : 0xb9f4f1, 0x183d40);
+    const y = p.hy + 0.012;
+    // Flush inlays and underside braces leave the jumping surface clear.
+    for (const side of [-1, 1]) {
+      g.add(box(p.hx * 1.65, 0.018, 0.045, light, 0, y, side * p.hz * 0.82));
+      g.add(rounded(p.hx * 1.75, 0.14, 0.12, rim, 0, -p.hy + 0.04, side * p.hz * 0.78));
+    }
+    if (p.type !== 'beam' && !p.belt) {
+      for (const x of [-1, 1]) for (const z of [-1, 1]) g.add(cyl(0.06, 0.02, rim, x * p.hx * 0.82, y + 0.005, z * p.hz * 0.65));
+      for (const z of [-0.33, 0.33]) g.add(box(p.hx * 1.5, 0.012, 0.018, rim, 0, y, p.hz * z));
+    }
+    return g;
+  }
+
   /** 탑 몸체: 테마 벽 + 버트레스 기둥 + 층 표지 + 몰딩 */
   _buildShell(topY) {
     const { tower } = this;
@@ -322,7 +351,7 @@ export class WorldView {
       if (!texCache[idx]) {
         const { map, glow } = makeWallTextures(idx);
         texCache[idx] = new THREE.MeshStandardMaterial({
-          map, emissiveMap: glow, emissive: 0xffffff, emissiveIntensity: 0.45, side: THREE.BackSide, roughness: 1,
+          map, bumpMap: map, bumpScale: 0.18, emissiveMap: glow, emissive: 0xffffff, emissiveIntensity: 0.22, side: THREE.BackSide, roughness: 0.36, metalness: 0.16,
         });
       }
       return texCache[idx];
@@ -352,6 +381,7 @@ export class WorldView {
         pil.setMatrixAt(i, m);
       }
       this.stageGroups[s].add(pil);
+      this._buildArchitecture(s, theme);
 
       // Cloth banners break up the stone silhouette and carry each floor's colors.
       for (let i = 0; i < 8; i++) {
@@ -359,7 +389,7 @@ export class WorldView {
         const banner = new THREE.Group();
         banner.position.set(Math.sin(a) * (WALL_R - 2.4), tower.safeZones[s - 1].maxY + 4.5, Math.cos(a) * (WALL_R - 2.4));
         banner.rotation.y = a;
-        banner.add(rounded(2.1, 4.2, 0.16, lambert(i % 2 ? 0xf0a0b4 : 0xffd775), 0, 1, 0));
+        banner.add(rounded(2.1, 4.2, 0.16, lambert(i % 2 ? 0x7b9bd3 : 0xbce8f5), 0, 1, 0));
         banner.add(box(2.5, 0.14, 0.3, lambert(0xe1ece3), 0, 3.2, 0));
         const badge = new THREE.Mesh(new THREE.OctahedronGeometry(0.55), lambert(0xeaf8ee));
         badge.scale.set(1, 1.5, 0.1);
@@ -385,6 +415,61 @@ export class WorldView {
       lab.position.set(Math.cos(ang) * (WALL_R - 3.5), entry.maxY + 9, Math.sin(ang) * (WALL_R - 3.5));
       this.stageGroups[s].add(lab);
     }
+  }
+
+  _buildArchitecture(stage, theme) {
+    const group = this.stageGroups[stage];
+    const baseY = this.tower.safeZones[stage - 1].maxY;
+    const decor = new THREE.Group();
+    const stone = lambert(theme.wall);
+    const trim = metal(theme.accent, 0.35);
+    const glass = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.65, metalness: 0.35, roughness: 0.2 });
+    for (let i = 0; i < 10; i++) {
+      const angle = i * Math.PI / 5;
+      const window = new THREE.Group();
+      window.position.set(Math.sin(angle) * (WALL_R - 2.8), baseY + 5, Math.cos(angle) * (WALL_R - 2.8));
+      window.rotation.y = angle;
+      for (const side of [-1, 1]) {
+        window.add(rounded(0.5, 5, 0.65, stone, side * 2.4, 2.5, 0));
+        window.add(rounded(0.7, 0.3, 0.85, trim, side * 2.4, 0.2, -0.1));
+        window.add(rounded(0.7, 0.3, 0.85, trim, side * 2.4, 4.9, -0.1));
+      }
+      const arch = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.25, 8, 24, Math.PI), stone);
+      arch.position.y = 5;
+      window.add(arch);
+      const shape = new THREE.Shape();
+      shape.moveTo(-2.1, 0.35); shape.lineTo(2.1, 0.35); shape.lineTo(2.1, 5);
+      shape.absarc(0, 5, 2.1, 0, Math.PI, false); shape.lineTo(-2.1, 0.35);
+      const pane = new THREE.Mesh(new THREE.ShapeGeometry(shape, 16), glass);
+      pane.rotation.y = Math.PI;
+      pane.position.z = 0.15;
+      window.add(pane);
+      for (const x of [-0.7, 0, 0.7]) window.add(box(0.07, 5.8, 0.12, trim, x, 3.3, -0.04));
+      for (const y of [1.7, 3.5, 5]) window.add(box(4.2, 0.07, 0.12, trim, 0, y, -0.04));
+      window.add(rounded(5.4, 0.35, 1.0, stone, 0, 0.15, 0));
+      decor.add(window);
+      for (let k = 0; k < 3; k++) {
+        const icicle = new THREE.Mesh(new THREE.ConeGeometry(0.18 + k * 0.04, 1.2 + k * 0.5, 6), glass);
+        icicle.rotation.z = Math.PI;
+        icicle.position.set(window.position.x + Math.cos(angle) * (k - 1) * 1.4, baseY + 13 - k * 0.3, window.position.z - Math.sin(angle) * (k - 1) * 1.4);
+        decor.add(icicle);
+      }
+    }
+    // A floating crystal and metal halo form a landmark in the tower's core.
+    const crystal = new THREE.Group();
+    const entry = this.tower.safeZones[stage - 1];
+    const angle = Math.atan2(entry.z, entry.x);
+    crystal.position.set(Math.cos(angle) * 8, baseY + 8, Math.sin(angle) * 8);
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(1.25), new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.6, roughness: 0.18, metalness: 0.5 }));
+    gem.scale.y = 1.8;
+    crystal.add(gem);
+    for (const tilt of [-0.5, 0.5]) {
+      const halo = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.07, 8, 48), trim);
+      halo.rotation.x = Math.PI / 2 + tilt;
+      crystal.add(halo);
+    }
+    group.add(batchMeshes(decor), crystal);
+    this.crystals.push({ group: crystal, y: baseY + 8 });
   }
 
   _buildHazard(h, group) {
@@ -441,7 +526,7 @@ export class WorldView {
       g.add(cyl(0.22, 1.7, lambert(0x6c8391), x, p.maxY + 0.85, z));
       g.add(new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), new THREE.MeshBasicMaterial({ color: theme.accent })).translateX(x).translateY(p.maxY + 2.4).translateZ(z));
     }
-    const label = makeLabel(k === 0 ? '출발' : (k === TOWER.stages ? '정상!' : `안전구역 ${k}`), '#f6fff0', [2.7, 0.68]);
+    const label = makeLabel(sz.bossPrep ? '최종 결전 · 준비 구역' : k === 0 ? '출발' : (k === TOWER.stages ? '정상!' : `안전구역 ${k}`), '#f6fff0', [sz.bossPrep ? 5 : 2.7, 0.68]);
     label.position.set(p.x + p.next.x * 4 - p.next.z * 3, p.maxY + 2.7, p.z + p.next.z * 4 + p.next.x * 3);
     g.add(label);
 
@@ -458,14 +543,15 @@ export class WorldView {
     forgeLabel.position.set(sz.forge.x, p.maxY + 2.0, sz.forge.z);
     g.add(forgeLabel);
     const entry = { k, forge, water, chest: null };
-    if (k >= 1) {
+    if (k >= 1 && !sz.bossPrep) {
       const chest = makeChest();
       chest.group.position.set(sz.chest.x, p.maxY, sz.chest.z);
       chest.group.rotation.y = Math.atan2(p.x - sz.chest.x, p.z - sz.chest.z);
       g.add(chest.group);
       entry.chest = chest;
     }
-    this.safeProps[k] = entry;
+    if (sz.bossPrep) this.bossSanctuaryProps = entry;
+    else this.safeProps[k] = entry;
     return g;
   }
 
@@ -499,7 +585,7 @@ export class WorldView {
       const pos = this.embers.geometry.attributes.position;
       for (let i = 0; i < this.emberSeed.length; i++) {
         const [bx, by, bz, sp, ph] = this.emberSeed[i];
-        pos.setXYZ(i, center.x + bx + Math.sin(time * 0.7 + ph) * 1.5, center.y - 8 + ((by + time * sp) % 40), center.z + bz + Math.cos(time * 0.6 + ph) * 1.5);
+        pos.setXYZ(i, center.x + bx + Math.sin(time * 0.7 + ph) * 1.5, center.y + 30 - ((by + time * sp) % 40), center.z + bz + Math.cos(time * 0.6 + ph) * 1.5);
       }
       pos.needsUpdate = true;
     }
@@ -536,6 +622,11 @@ export class WorldView {
     }
     for (const t of this.torches) t.flame.scale.set(1, 0.85 + 0.3 * Math.sin(time * 9 + t.ph), 1);
     this.beacon.rotation.y = time;
+    for (const c of this.crystals) {
+      if (!c.group.parent.visible) continue;
+      c.group.rotation.y = time * 0.3;
+      c.group.position.y = c.y + Math.sin(time * 1.2) * 0.3;
+    }
     for (const e of this.safeProps) {
       if (!e) continue;
       e.forge.fire.scale.y = 0.45 + 0.1 * Math.sin(time * 9 + e.k);

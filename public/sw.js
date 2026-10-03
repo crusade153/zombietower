@@ -1,5 +1,5 @@
 // 앱 셸 캐시 (stale-while-revalidate): 오프라인에서도 실행되고, 새 버전은 다음 실행 때 반영된다.
-const CACHE = 'zombie-tower-v2';
+const CACHE = 'zombie-tower-ipad-v4';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();

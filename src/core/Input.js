@@ -50,6 +50,8 @@ export class Input {
     this.jumpHeld = this.attackHeld = false;
     this.jumpPressed = this.attackPressed = this.waterPressed = false;
     this.slotPressed = -1;
+    this._pointers.clear();
+    this.camDX = this.camDY = 0;
     document.querySelectorAll('#dpad .arm.on, .act-btn.pressed').forEach((e) => e.classList.remove('on', 'pressed'));
   }
 
@@ -78,6 +80,7 @@ export class Input {
       for (const k in arms) arms[k].classList.remove('on');
     };
     el.addEventListener('pointerdown', (e) => {
+      if (!this.enabled) return;
       e.preventDefault();
       if (e.pointerType === 'touch') this.touchDetected = true;
       activeId = e.pointerId;
@@ -95,6 +98,7 @@ export class Input {
       const el = document.getElementById(id);
       let activeId = null;
       el.addEventListener('pointerdown', (e) => {
+        if (!this.enabled) return;
         e.preventDefault();
         if (e.pointerType === 'touch') this.touchDetected = true;
         activeId = e.pointerId;
@@ -127,6 +131,7 @@ export class Input {
   _bindCamera() {
     const canvas = document.getElementById('game');
     canvas.addEventListener('pointerdown', (e) => {
+      if (!this.enabled) return;
       if (e.pointerType === 'touch') this.touchDetected = true;
       this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ }
@@ -165,6 +170,7 @@ export class Input {
       if (e.code === 'KeyJ' || e.code === 'KeyK') this.attackHeld = false;
     });
     window.addEventListener('blur', () => this.clearAll());
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.clearAll(); });
   }
 
   /** iOS 확대/스크롤/더블탭 방지 */
