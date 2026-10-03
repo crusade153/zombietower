@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { TOWER } from '../config/balance.js';
 import { THEMES, themeIndexForStage, themeForStage } from '../config/themes.js';
 import {
-  makeChest, makeForge, makeWaterStation, makeFlag, lambert, box, cyl,
+  makeChest, makeForge, makeWaterStation, makeFlag, lambert, box, cyl, rounded,
 } from './models.js';
 import { makeWallTextures } from './WallTextures.js';
 import { blinkState } from './Platforms.js';
@@ -16,9 +17,9 @@ function typeColor(p, theme, stage) {
   const t = theme.platform;
   const h = (t.h + (stage % 2) * 0.02) % 1;
   switch (p.type) {
-    case 'safe': return c.set(0xe6c76a);
-    case 'checkpoint': return c.set(0x35c96a);
-    case 'arena': return c.set(0x8a2d2d);
+    case 'safe': return c.set(0xa9ddd4);
+    case 'checkpoint': return c.set(0x72ddaa);
+    case 'arena': return c.set(0xf0839c);
     case 'rest': return c.setHSL(h, t.s, Math.min(0.8, t.l + 0.1));
     case 'beam': return c.setHSL(h, t.s * 0.8, t.l * 0.75);
     case 'slider': return c.set(0xffa53a);
@@ -26,23 +27,27 @@ function typeColor(p, theme, stage) {
     case 'falling': return c.set(0xd9b878);
     case 'conveyor': return c.set(0x3a3e48);
     case 'blink': return c.set(0x8ae8ff);
-    default: return c.setHSL(h, t.s, t.l);
+    default: {
+      if (p.type === 'static' && p.id % 5 === 1) return c.set(0xffcd48);
+      if (p.type === 'static' && p.id % 5 === 3) return c.set(0xef729c);
+      return c.setHSL(h, t.s, t.l);
+    }
   }
 }
 
 function colorBox(p, color, atBase) {
-  const g = new THREE.BoxGeometry(p.hx * 2, p.hy * 2, p.hz * 2);
-  const top = color.clone().multiplyScalar(1.18);
-  const side = color.clone().multiplyScalar(0.72);
-  const sideB = color.clone().multiplyScalar(0.62);
-  const bottom = color.clone().multiplyScalar(0.4);
-  const faces = [side, side, top, bottom, sideB, sideB]; // +x -x +y -y +z -z
-  const arr = new Float32Array(24 * 3);
-  for (let f = 0; f < 6; f++) {
-    for (let v = 0; v < 4; v++) {
-      const i = (f * 4 + v) * 3;
-      arr[i] = faces[f].r; arr[i + 1] = faces[f].g; arr[i + 2] = faces[f].b;
-    }
+  const g = new RoundedBoxGeometry(p.hx * 2, p.hy * 2, p.hz * 2, 1, Math.min(0.16, p.hy * 0.5));
+  const normal = g.attributes.normal;
+  const pos = g.attributes.position;
+  const top = color.clone().lerp(new THREE.Color(0xf4fff5), p.type === 'safe' ? 0.5 : 0.06);
+  const side = color.clone().multiplyScalar(0.8);
+  const arr = new Float32Array(pos.count * 3);
+  const face = new THREE.Color();
+  const edge = new THREE.Color(0xd3fff0);
+  for (let i = 0; i < pos.count; i++) {
+    face.copy(side).lerp(top, Math.max(0, normal.getY(i)));
+    if (Math.abs(normal.getY(i)) < 0.4 && pos.getY(i) > p.hy * 0.35) face.lerp(edge, 0.62);
+    arr[i * 3] = face.r; arr[i * 3 + 1] = face.g; arr[i * 3 + 2] = face.b;
   }
   g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
   if (atBase) g.translate(p.bx, p.by, p.bz);
@@ -50,8 +55,8 @@ function colorBox(p, color, atBase) {
 }
 
 function topOutline(p, out) {
-  const y = p.maxY + 0.012;
-  const x0 = p.minX; const x1 = p.maxX; const z0 = p.minZ; const z1 = p.maxZ;
+  const y = p.maxY + 0.014;
+  const x0 = p.minX + 0.18; const x1 = p.maxX - 0.18; const z0 = p.minZ + 0.18; const z1 = p.maxZ - 0.18;
   const pts = [[x0, z0, x1, z0], [x1, z0, x1, z1], [x1, z1, x0, z1], [x0, z1, x0, z0]];
   for (const [ax, az, bx, bz] of pts) out.push(ax, y, az, bx, y, bz);
 }
@@ -62,7 +67,7 @@ function makeLabel(text, color = '#ffe9b0', scale = [5, 1.25]) {
   const g = c.getContext('2d');
   g.font = 'bold 72px sans-serif';
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.lineWidth = 12; g.strokeStyle = 'rgba(0,0,0,0.85)';
+  g.lineWidth = 9; g.strokeStyle = '#365862';
   g.strokeText(text, 256, 64);
   g.fillStyle = color;
   g.fillText(text, 256, 64);
@@ -112,15 +117,25 @@ export class WorldView {
     const { scene, tower } = this;
     const th0 = THEMES[0];
     scene.background = new THREE.Color(th0.fog);
-    scene.fog = new THREE.Fog(th0.fog, 45, 230);
+    scene.fog = new THREE.Fog(th0.fog, 35, 155);
     this.fogTarget = new THREE.Color(th0.fog);
     this.skyTarget = new THREE.Color(th0.sky);
 
-    this.hemi = new THREE.HemisphereLight(th0.sky, 0xff5a1a, 1.0);
+    this.hemi = new THREE.HemisphereLight(th0.sky, 0x6d88a1, 1.55);
     scene.add(this.hemi);
-    const sun = new THREE.DirectionalLight(0xfff0dd, 0.9);
+    const sun = new THREE.DirectionalLight(0xfff2df, 2.2);
     sun.position.set(-30, 80, 20);
     scene.add(sun);
+    this.sun = sun;
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    Object.assign(sun.shadow.camera, { left: -18, right: 18, top: 18, bottom: -18, near: 1, far: 90 });
+    sun.shadow.normalBias = 0.08;
+    sun.shadow.bias = -0.0003;
+    scene.add(sun.target);
+    const rim = new THREE.DirectionalLight(0xa4dfff, 1.0);
+    rim.position.set(30, 20, -40);
+    scene.add(rim);
     // 용암이 벽·발판을 아래에서 붉게 비춘다
     this.lavaLight = new THREE.PointLight(0xff5a20, 14, 110, 1.0);
     this.lavaLight.position.set(0, -10, 0);
@@ -155,10 +170,10 @@ export class WorldView {
     const topY = tower.safeZones[tower.safeZones.length - 1].maxY;
     const pillarTop = topY + 14;
     const pillarH = pillarTop + 100;
-    scene.add(cyl(TOWER.pillarRadius, pillarH, lambert(0x3a2c2c), 0, (pillarTop - 100) / 2, 0));
+    scene.add(cyl(TOWER.pillarRadius, pillarH, lambert(0x8898ad), 0, (pillarTop - 100) / 2, 0));
     const rings = [];
     for (let y = 4; y < topY + 20; y += 7) rings.push(y);
-    const ringMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 24), lambert(0x5a4040), rings.length);
+    const ringMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 24), lambert(0x92dbcf), rings.length);
     const m4 = new THREE.Matrix4();
     rings.forEach((y, i) => {
       m4.compose(new THREE.Vector3(0, y, 0), new THREE.Quaternion(), new THREE.Vector3(TOWER.pillarRadius + 0.35, 0.5, TOWER.pillarRadius + 0.35));
@@ -179,8 +194,8 @@ export class WorldView {
 
     this._buildShell(topY);
 
-    const solidMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-    const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+    const solidMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xeafff3, transparent: true, opacity: 0.35 });
     const chevron = makeChevronTexture();
     const torchMat = new THREE.MeshBasicMaterial({ color: 0xffb040 });
 
@@ -189,6 +204,7 @@ export class WorldView {
       const group = this.stageGroups[k];
       const theme = themeForStage(Math.max(1, k));
       const mesh = new THREE.Mesh(colorBox(p, typeColor(p, theme, k), true), solidMat);
+      mesh.receiveShadow = true;
       group.add(mesh);
       const line = [];
       topOutline(p, line);
@@ -223,7 +239,7 @@ export class WorldView {
           this.conveyors.push({ tex, tps: p.belt.speed / 1.6 });
           const l = []; topOutline(p, l); lines.push(...l);
         } else if (p.blink) {
-          const mat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true });
+          const mat = new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, roughness: 0.7 });
           const mesh = new THREE.Mesh(colorBox(p, color, false), mat);
           mesh.position.set(p.x, p.y, p.z);
           group.add(mesh);
@@ -231,6 +247,7 @@ export class WorldView {
         } else if (p.motion || p.type === 'falling') {
           const geo = colorBox(p, color, false);
           const mesh = new THREE.Mesh(geo, solidMat);
+          mesh.receiveShadow = true;
           mesh.position.set(p.x, p.y, p.z);
           const l = [];
           const h = p.hy + 0.012;
@@ -280,7 +297,12 @@ export class WorldView {
           }
         }
       }
-      if (statics.length) group.add(new THREE.Mesh(mergeGeometries(statics, false), solidMat));
+      if (statics.length) {
+        const mesh = new THREE.Mesh(mergeGeometries(statics, false), solidMat);
+        mesh.receiveShadow = true;
+        group.add(mesh);
+        statics.forEach((geo) => geo.dispose());
+      }
       if (lines.length) {
         const lg = new THREE.BufferGeometry();
         lg.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
@@ -299,13 +321,13 @@ export class WorldView {
     const getMat = (idx) => {
       if (!texCache[idx]) {
         const { map, glow } = makeWallTextures(idx);
-        texCache[idx] = new THREE.MeshLambertMaterial({
-          map, emissiveMap: glow, emissive: 0xffffff, emissiveIntensity: 1.15, side: THREE.BackSide,
+        texCache[idx] = new THREE.MeshStandardMaterial({
+          map, emissiveMap: glow, emissive: 0xffffff, emissiveIntensity: 0.45, side: THREE.BackSide, roughness: 1,
         });
       }
       return texCache[idx];
     };
-    const REP_U = 20;
+    const REP_U = 14;
     for (let s = 1; s <= TOWER.stages; s++) {
       const theme = themeForStage(s);
       const idx = themeIndexForStage(s);
@@ -331,6 +353,21 @@ export class WorldView {
       }
       this.stageGroups[s].add(pil);
 
+      // Cloth banners break up the stone silhouette and carry each floor's colors.
+      for (let i = 0; i < 8; i++) {
+        const a = i * Math.PI / 4 + 0.15;
+        const banner = new THREE.Group();
+        banner.position.set(Math.sin(a) * (WALL_R - 2.4), tower.safeZones[s - 1].maxY + 4.5, Math.cos(a) * (WALL_R - 2.4));
+        banner.rotation.y = a;
+        banner.add(rounded(2.1, 4.2, 0.16, lambert(i % 2 ? 0xf0a0b4 : 0xffd775), 0, 1, 0));
+        banner.add(box(2.5, 0.14, 0.3, lambert(0xe1ece3), 0, 3.2, 0));
+        const badge = new THREE.Mesh(new THREE.OctahedronGeometry(0.55), lambert(0xeaf8ee));
+        badge.scale.set(1, 1.5, 0.1);
+        badge.position.set(0, 1.6, -0.12);
+        banner.add(badge);
+        this.stageGroups[s].add(banner);
+      }
+
       // 층 경계 몰딩(벽에서 살짝 튀어나온 띠)
       if (s < TOWER.stages) {
         const band = new THREE.Mesh(
@@ -343,7 +380,7 @@ export class WorldView {
 
       // 층 표지
       const entry = tower.safeZones[s - 1];
-      const lab = makeLabel(`${s}F · ${theme.name}`, '#ffe9b0', [11, 2.75]);
+      const lab = makeLabel(`${s}F · ${theme.name}`, '#f0fff5', [8, 2]);
       const ang = Math.atan2(entry.z, entry.x);
       lab.position.set(Math.cos(ang) * (WALL_R - 3.5), entry.maxY + 9, Math.sin(ang) * (WALL_R - 3.5));
       this.stageGroups[s].add(lab);
@@ -389,14 +426,23 @@ export class WorldView {
   _buildSafeProps(p, k, theme) {
     const g = new THREE.Group();
     const sz = p.safe;
+    // Tile seams and mint edging make the landing area read as a real place.
+    const tileMat = lambert(0x85bdb9);
+    for (let d = -6; d <= 6; d += 2) {
+      g.add(box(0.025, 0.012, p.hz * 2 - 0.5, tileMat, p.x + d, p.maxY + 0.007, p.z));
+      g.add(box(p.hx * 2 - 0.5, 0.012, 0.025, tileMat, p.x, p.maxY + 0.007, p.z + d));
+    }
+    for (const [x, z, w, d] of [[0, -p.hz + 0.12, p.hx * 2, 0.18], [0, p.hz - 0.12, p.hx * 2, 0.18], [-p.hx + 0.12, 0, 0.18, p.hz * 2], [p.hx - 0.12, 0, 0.18, p.hz * 2]]) {
+      g.add(rounded(w, 0.08, d, lambert(0x79e8c5, 0x18372d), p.x + x, p.maxY + 0.03, p.z + z));
+    }
     for (const [sx, sz2] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
       const x = p.x + sx * (p.hx - 0.7);
       const z = p.z + sz2 * (p.hz - 0.7);
-      g.add(cyl(0.28, 2.2, lambert(0x6a5a40), x, p.maxY + 1.1, z));
+      g.add(cyl(0.22, 1.7, lambert(0x6c8391), x, p.maxY + 0.85, z));
       g.add(new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), new THREE.MeshBasicMaterial({ color: theme.accent })).translateX(x).translateY(p.maxY + 2.4).translateZ(z));
     }
-    const label = makeLabel(k === 0 ? '출발' : (k === TOWER.stages ? '정상!' : `안전구역 ${k}`));
-    label.position.set(p.x, p.maxY + 5.2, p.z);
+    const label = makeLabel(k === 0 ? '출발' : (k === TOWER.stages ? '정상!' : `안전구역 ${k}`), '#f6fff0', [2.7, 0.68]);
+    label.position.set(p.x + p.next.x * 4 - p.next.z * 3, p.maxY + 2.7, p.z + p.next.z * 4 + p.next.x * 3);
     g.add(label);
 
     const forge = makeForge();
@@ -405,6 +451,12 @@ export class WorldView {
     const water = makeWaterStation();
     water.position.set(sz.water.x, p.maxY, sz.water.z);
     g.add(water);
+    const waterLabel = makeLabel('충전', '#a8ecff', [1.5, 0.4]);
+    waterLabel.position.set(sz.water.x, p.maxY + 2.0, sz.water.z);
+    g.add(waterLabel);
+    const forgeLabel = makeLabel('대장간', '#ffe299', [2, 0.5]);
+    forgeLabel.position.set(sz.forge.x, p.maxY + 2.0, sz.forge.z);
+    g.add(forgeLabel);
     const entry = { k, forge, water, chest: null };
     if (k >= 1) {
       const chest = makeChest();
@@ -442,6 +494,8 @@ export class WorldView {
     const dt = Math.min(0.1, Math.max(0, time - this._lastTime));
     this._lastTime = time;
     if (center) {
+      this.sun.position.set(center.x - 18, center.y + 30, center.z + 16);
+      this.sun.target.position.set(center.x, center.y, center.z);
       const pos = this.embers.geometry.attributes.position;
       for (let i = 0; i < this.emberSeed.length; i++) {
         const [bx, by, bz, sp, ph] = this.emberSeed[i];

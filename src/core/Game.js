@@ -9,7 +9,7 @@ import { Effects } from '../world/Effects.js';
 import { updatePlatforms, preparePlatforms, stepOn, buildNearCache } from '../world/Platforms.js';
 import { updateHazards } from '../world/Hazards.js';
 import { themeForStage } from '../config/themes.js';
-import { makeHealPickup, makeWaterPickup, makeCoin } from '../world/models.js';
+import { makeHealPickup, makeWaterPickup, makeCoin, disposeWorld } from '../world/models.js';
 import { Player, groundYBelow } from '../entities/Player.js';
 import { Zombie } from '../entities/Zombie.js';
 import { moveAndCollide, rayBox } from './physics.js';
@@ -25,6 +25,8 @@ import {
 import { Hud } from '../ui/Hud.js';
 import { Screens } from '../ui/Screens.js';
 import { makeRng } from './rng.js';
+import { Lobby } from '../world/Lobby.js';
+import { setSoundIcon } from '../ui/icons.js';
 
 const DIFFS = {
   easy: { hp: 0.8, lava: 0.85, zspeed: 0.9 },
@@ -42,6 +44,13 @@ export class Game {
     this.maxRatio = Math.min(dpr, 2);
     this.ratio = this.maxRatio;
     this.renderer.setPixelRatio(this.ratio);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.lobby = new Lobby();
     this._frameEma = 1 / 60;
     this._adaptT = 0;
     this.scene = new THREE.Scene();
@@ -54,6 +63,7 @@ export class Game {
     this.screens = new Screens(this);
     this.save = loadSave();
     this.audio.muted = !!this.save.muted;
+    setSoundIcon(this.hud.el.mute, this.audio.muted);
     this.difficulty = this._difficulty();
     this.state = 'title'; // title | play | dead | modal | paused | clear
     this.time = 0;
@@ -91,7 +101,8 @@ export class Game {
   // ------------------------------------------------------------------
   buildWorld() {
     // 이전 월드 정리
-    while (this.scene.children.length) this.scene.remove(this.scene.children[0]);
+    this.fx.ringGeo.dispose();
+    disposeWorld(this.scene);
     this.fx = new Effects(this.scene);
     this.zombies = [];
     this.pickups = [];
@@ -189,7 +200,8 @@ export class Game {
     this.camera.aspect = w / h;
     this.camera.fov = w / h < 1.2 ? 72 : 62;
     this.camera.updateProjectionMatrix();
-    document.getElementById('rotate-hint').classList.toggle('hidden', !(h > w && this.input.touchDetected));
+    this.lobby.resize(w, h);
+    document.getElementById('rotate-hint').classList.add('hidden');
   }
 
   // ------------------------------------------------------------------
@@ -207,6 +219,7 @@ export class Game {
     }
     this.stateWasTitleWithOldWorld = false;
     this.input.clearAll();
+    this.cam.pitch = 0.38;
     {
       const g0 = this.player.lastGround || this.tower.safeZones[this.safeIdx] || this.tower.safeZones[0];
       this.cam.snapTo(this.player.body, g0.next);
@@ -218,7 +231,7 @@ export class Game {
     if (this.save.lastSafe === 0 && !this.save.tip) {
       this.save.tip = true;
       this.markDirty();
-      this.hud.toast('왼쪽 십자키로 이동 · 오른쪽 ⤒ 점프!\n발판을 건너 위로 올라가자', 3200);
+      this.hud.toast('모험 시작!', 1600);
     } else {
       this.hud.toast(this.save.lastSafe === 0 ? '타워를 올라가라!' : `안전구역 ${this.save.lastSafe}에서 이어서!`, 1800);
     }
@@ -258,7 +271,7 @@ export class Game {
   toggleMute() {
     this.audio.setMuted(!this.audio.muted);
     this.save.muted = this.audio.muted;
-    this.hud.el.mute.textContent = this.audio.muted ? '🔇' : '🔊';
+    setSoundIcon(this.hud.el.mute, this.audio.muted);
     this.markDirty();
   }
 
@@ -302,7 +315,10 @@ export class Game {
       this.acc = 0;
     }
     this.updateView(dt, now);
-    this.renderer.render(this.scene, this.camera);
+    if (this.state === 'title') {
+      this.lobby.update(now, this.reducedMotion);
+      this.renderer.render(this.lobby.scene, this.lobby.camera);
+    } else this.renderer.render(this.scene, this.camera);
     this.adaptResolution(dt);
     requestAnimationFrame((t) => this.frame(t));
   }
@@ -335,8 +351,15 @@ export class Game {
     P.controllable = this.state === 'play';
     const plats = this.near(b.y);
     P.update(dt, this.input, this.cam, plats);
-    if (P.events.jumped) this.audio.play('jump');
-    if (P.events.landed) this.audio.play('land');
+    if (P.events.jumped) {
+      this.audio.play('jump');
+      this.fx.ring(b.x, b.y, b.z, 0.85, 0xc1ffe9, 0.32, true);
+      this.fx.burst(b.x, b.y + 0.05, b.z, 0xf8ffea, 6, 1.7, 0.32, 0.09);
+    }
+    if (P.events.landed) {
+      this.audio.play('land');
+      this.fx.ring(b.x, b.y, b.z, 1.05, 0xffffff, 0.25, true);
+    }
     if (b.ground) this.onBodyStep(b.ground);
     if (b.ground !== this.curGround && b.ground && b.ground.type !== 'lavafloor') {
       this.curGround = b.ground;
@@ -425,6 +448,8 @@ export class Game {
       this.save.best = Math.max(this.save.best || 0, k);
       this.markDirty(true);
       this.audio.play('safe');
+      this.fx.confetti(p.x, p.maxY + 1.5, p.z);
+      this.fx.ring(p.x, p.maxY, p.z, 4.5, 0xb8ffe0, 0.9, true);
       if (k === TOWER.stages) {
         this.hud.toast('🚁 정상 도착!', 2500);
         this.save.cleared = true;
@@ -1041,7 +1066,7 @@ export class Game {
   updateView(dt, now) {
     const P = this.player;
     const b = P.body;
-    this.world.sync(this.time, b, this.lava.y);
+    this.world.sync(this.state === 'title' ? now : this.time, b, this.lava.y);
     this.fx.update(dt);
 
     if (this.state === 'title') {

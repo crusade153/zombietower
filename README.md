@@ -1,7 +1,7 @@
 # 🧟 좀비 타워
 
 용암이 차오르는 타워를 좀비를 뚫고 올라가는 **로블록스풍 3D 점프맵 서바이벌**. 아이패드(가로 화면) 터치 조작이 기본이고, PC 키보드로도 테스트할 수 있다.
-Three.js + Vite + 순수 JavaScript. 에셋 파일 없이 전부 코드로 만든 박스 모델/효과음.
+Three.js + Vite + 순수 JavaScript. 둥근 장난감풍 캐릭터, 실시간 그림자, 다섯 가지 컬러 타워와 움직이는 3D 로비를 코드로 렌더링한다. 기존 저장 데이터와 게임 규칙은 유지한다.
 
 ## 아이패드에서 바로 해보기 (개발 중)
 
@@ -83,6 +83,8 @@ npm run build     # dist/ 생성 (정적 파일)
 npm run preview   # 빌드 결과 확인
 node scripts/make-icons.mjs   # 앱 아이콘 다시 생성
 ```
+
+그래픽과 UI 검증은 Playwright로 실제 브라우저에서 실행한다. 처음 한 번 `npx playwright install chromium`으로 브라우저를 준비한 후, 개발 서버를 켠 상태에서 `npm run test:visual`을 실행한다. 시작 화면 애니메이션의 픽셀 변화, PC 키보드와 터치 점프, 공격, 일시정지, 보물상자와 대장간, 다섯 층 테마, 휴대폰/태블릿 배치를 확인한다. 스크린샷과 검증 결과는 `artifacts/visual-checks/`에 저장된다.
 
 ## 배포 (아이패드 어디서나 접속)
 

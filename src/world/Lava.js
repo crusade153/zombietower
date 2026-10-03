@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import { LAVA } from '../config/balance.js';
 
 const VERT = /* glsl */ `
+uniform float uTime;
 varying vec3 vWorld;
 void main() {
   vec4 w = modelMatrix * vec4(position, 1.0);
+  w.y += sin(w.x * 0.35 + uTime * 1.2) * cos(w.z * 0.3 + uTime) * 0.08;
   vWorld = w.xyz;
   gl_Position = projectionMatrix * viewMatrix * w;
 }`;
@@ -30,18 +32,18 @@ void main() {
   float t = uTime * 0.12;
   float n1 = fbm(p + vec2(t, t * 0.6));
   float n2 = fbm(p * 1.9 + vec2(-t * 0.8, t) + n1 * 1.5);
-  float veins = smoothstep(0.35, 0.75, n2);
-  vec3 deep = vec3(0.55, 0.06, 0.02);
-  vec3 hot = vec3(1.0, 0.62, 0.12);
+  float veins = smoothstep(0.4, 0.56, n2);
+  vec3 deep = vec3(0.95, 0.22, 0.19);
+  vec3 hot = vec3(1.0, 0.76, 0.28);
   vec3 col = mix(deep, hot, veins);
   float crust = smoothstep(0.55, 0.8, noise(p * 6.0 + t));
-  col = mix(col, vec3(0.12, 0.03, 0.02), crust * 0.65);
+  col = mix(col, vec3(0.65, 0.12, 0.17), crust * 0.4);
   col += vec3(0.25, 0.08, 0.0) * (0.5 + 0.5 * sin(uTime * 2.0 + n2 * 8.0)) * 0.25;
-  vec3 obs = mix(vec3(0.05, 0.05, 0.09), vec3(0.22, 0.24, 0.36), noise(vWorld.xz * 0.6));
+  vec3 obs = mix(vec3(0.2, 0.65, 0.8), vec3(0.69, 0.93, 1.0), noise(vWorld.xz * 0.6));
   col = mix(col, obs, uFrozen);
   float dist = length(vWorld - cameraPosition);
   float f = smoothstep(90.0, 320.0, dist);
-  col = mix(col, vec3(0.16, 0.05, 0.03), f);
+  col = mix(col, vec3(0.65, 0.63, 0.62), f);
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -60,7 +62,7 @@ export class Lava {
       minX: -700, maxX: 700, minZ: -700, maxZ: 700, minY: -5, maxY: 0,
     };
     this.uniforms = { uTime: { value: 0 }, uFrozen: { value: 0 } };
-    const geo = new THREE.PlaneGeometry(1400, 1400, 1, 1);
+    const geo = new THREE.PlaneGeometry(1400, 1400, 96, 96);
     geo.rotateX(-Math.PI / 2);
     this.mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: this.uniforms }));
     this.mesh.frustumCulled = false;

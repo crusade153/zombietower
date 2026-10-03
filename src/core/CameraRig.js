@@ -6,7 +6,7 @@ export class CameraRig {
     this.camera = camera;
     this.yaw = 0;
     this.pitch = 0.34;
-    this.dist = 9.5;
+    this.dist = 8.3;
     this.target = new THREE.Vector3();
     this.shake = 0;
     this._initialized = false;

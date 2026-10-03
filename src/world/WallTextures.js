@@ -27,25 +27,26 @@ function shade(hex, f) {
 }
 
 function drawDungeon(g, e, rng) {
-  g.fillStyle = '#2a2420'; g.fillRect(0, 0, S, S);
+  g.fillStyle = '#627f89'; g.fillRect(0, 0, S, S);
   for (let row = 0; row < 16; row++) {
     const off = (row % 2) * 32;
     for (let x = -64; x < S + 64; x += 64) {
-      const f = 0.8 + rng() * 0.45;
-      g.fillStyle = shade(0x6a5a4c, f);
-      g.fillRect(x + off + 2, row * 32 + 2, 60, 28);
+      const f = 0.91 + rng() * 0.15;
+      g.fillStyle = shade(0x91b1b8, f);
+      g.beginPath(); g.roundRect(x + off + 2, row * 32 + 2, 60, 28, 3); g.fill();
+      g.fillStyle = '#c4d9db55'; g.fillRect(x + off + 5, row * 32 + 3, 54, 2);
     }
   }
   // 아치 창문 (발광)
   archPath(g, 256, 70, 96, 200);
-  g.fillStyle = '#100808'; g.fill();
-  g.lineWidth = 8; g.strokeStyle = '#3a3028'; g.stroke();
+  g.fillStyle = '#39575e'; g.fill();
+  g.lineWidth = 10; g.strokeStyle = '#d0e1df'; g.stroke();
   archPath(e, 256, 70, 96, 200);
   const grad = e.createLinearGradient(0, 70, 0, 270);
-  grad.addColorStop(0, '#ffb040'); grad.addColorStop(1, '#ff4a10');
+  grad.addColorStop(0, '#abefe7'); grad.addColorStop(1, '#57a9ad');
   e.fillStyle = grad; e.fill();
   e.fillStyle = '#000';
-  for (const x of [232, 256, 280]) e.fillRect(x - 2, 90, 4, 190);
+  e.fillRect(252, 90, 8, 190); e.fillRect(210, 175, 92, 7);
   // 횃불 걸이
   for (const x of [88, 424]) {
     g.fillStyle = '#2a2a2e'; g.fillRect(x - 5, 330, 10, 46);
@@ -57,11 +58,11 @@ function drawDungeon(g, e, rng) {
 }
 
 function drawLibrary(g, e, rng) {
-  g.fillStyle = '#2a1c12'; g.fillRect(0, 0, S, S);
-  const cols = ['#8a2a2a', '#2a5a8a', '#2a7a4a', '#9a7a2a', '#6a2a7a', '#7a4a2a', '#3a3a5a', '#aa5a2a'];
+  g.fillStyle = '#615c7c'; g.fillRect(0, 0, S, S);
+  const cols = ['#d9788e', '#79bada', '#75cda5', '#dbbc67', '#b197d5', '#e1a184', '#9badd4', '#f4b667'];
   for (let shelf = 0; shelf < 4; shelf++) {
     const y0 = shelf * 128;
-    g.fillStyle = '#5a3c24'; g.fillRect(0, y0 + 118, S, 10);
+    g.fillStyle = '#a6a4b8'; g.fillRect(0, y0 + 118, S, 10);
     let x = 4;
     while (x < S - 8) {
       const w = 10 + Math.floor(rng() * 12);
@@ -91,10 +92,10 @@ function drawLibrary(g, e, rng) {
 }
 
 function drawMachine(g, e, rng) {
-  g.fillStyle = '#2a2e36'; g.fillRect(0, 0, S, S);
+  g.fillStyle = '#4a657b'; g.fillRect(0, 0, S, S);
   for (let r = 0; r < 4; r++) {
     for (let c = 0; c < 4; c++) {
-      g.fillStyle = shade(0x5a606c, 0.85 + rng() * 0.3);
+      g.fillStyle = shade(0x8aa5b9, 0.9 + rng() * 0.15);
       g.fillRect(c * 128 + 3, r * 128 + 3, 122, 122);
       g.fillStyle = '#20242a';
       for (const [dx, dy] of [[12, 12], [110, 12], [12, 110], [110, 110]]) { g.beginPath(); g.arc(c * 128 + dx, r * 128 + dy, 4, 0, 6.3); g.fill(); }

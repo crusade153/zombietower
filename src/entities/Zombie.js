@@ -41,7 +41,7 @@ export class Zombie {
     this.growlT = 2 + Math.random() * 5;
 
     const h = makeHumanoid({
-      skin: d.colors.skin, shirt: d.colors.shirt, pants: d.colors.pants, scale: d.scale, zombie: true, ownMaterials: true,
+      skin: d.colors.skin, shirt: d.colors.shirt, pants: d.colors.pants, scale: d.scale, zombie: true, ownMaterials: true, variant: type,
     });
     this.h = h;
     this.root = h.root;
@@ -287,6 +287,9 @@ export class Zombie {
     const sp = Math.hypot(this.mv.x, this.mv.z);
     this.animT += dt * (3 + sp * 1.6);
     const run = Math.min(1, sp / 4);
+    this.h.model.position.y = Math.sin(this.animT * 2) * 0.04 * run;
+    this.h.model.rotation.z = Math.sin(this.animT) * 0.07;
+    p.head.rotation.z = Math.sin(this.animT * 0.6) * 0.08;
     p.legL.rotation.x = Math.sin(this.animT) * 0.7 * run;
     p.legR.rotation.x = -Math.sin(this.animT) * 0.7 * run;
     let arm = -1.4 + Math.sin(this.animT * 0.7) * 0.08;
@@ -318,8 +321,10 @@ export class Zombie {
   }
 
   dispose(g) {
+    this.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     g.scene.remove(this.root, this.blob, this.bar);
+    this.blob.geometry.dispose();
+    this.blob.material.dispose();
     for (const m of this.h.materials) m.dispose();
-    this.h.eyeMat.dispose();
   }
 }

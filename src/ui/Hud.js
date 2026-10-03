@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WEAPONS, RARITY } from '../config/weapons.js';
+import { icon } from './icons.js';
 
 const tmp = new THREE.Vector3();
 
@@ -18,6 +19,14 @@ export class Hud {
     this._last = {};
     this._toastT = null;
     this._ctxKey = '';
+    this.el.pause.innerHTML = icon('pause');
+    this.el.pause.title = '일시정지';
+    document.querySelector('.lava-ico').innerHTML = icon('flame');
+    document.getElementById('btn-jump').innerHTML = `${icon('jump')}<small>점프</small>`;
+    document.getElementById('btn-attack').innerHTML = icon('attack');
+    this.el.water.firstChild.remove();
+    this.el.water.insertAdjacentHTML('afterbegin', icon('water'));
+    for (const dir of ['up', 'down', 'left', 'right']) document.querySelector(`#dpad .${dir}`).innerHTML = icon(dir);
   }
 
   show(v) {
@@ -35,7 +44,7 @@ export class Hud {
     const r = Math.max(0, Math.round(hp));
     this._set('hp', `${r}/${max}`, () => {
       this.el.hpFill.style.width = `${Math.max(0, (hp / max) * 100)}%`;
-      this.el.hpText.textContent = `${r}`;
+      this.el.hpText.innerHTML = `${icon('heart')} ${r}`;
     });
   }
 
@@ -122,7 +131,10 @@ export class Hud {
     for (const b of buttons) {
       const e = document.createElement('button');
       e.className = 'ctx-btn';
-      e.textContent = b.label;
+      e.innerHTML = icon(b.id.includes('forge') ? 'forge' : b.id.includes('chest') ? 'bag' : 'water');
+      const label = document.createElement('span');
+      label.textContent = b.label.replace(/[📦⚒💧]/gu, '').trim();
+      e.appendChild(label);
       e.addEventListener('pointerdown', (ev) => { ev.preventDefault(); b.onTap(); });
       this.el.ctx.appendChild(e);
     }

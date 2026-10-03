@@ -2,27 +2,27 @@
 export const ZOMBIES = {
   walker: {
     name: '워커', hp: 50, dmg: 12, speed: 2.6, coin: 10, scale: 1, radius: 0.4, height: 1.8,
-    colors: { skin: 0x6fa05a, shirt: 0x4a5a7a, pants: 0x3a3a48 },
+    colors: { skin: 0x98d66b, shirt: 0x9474d6, pants: 0x405665 },
     attackRange: 1.4, windup: 0.4, cooldown: 1.1, knockResist: 0,
   },
   runner: {
     name: '러너', hp: 30, dmg: 9, speed: 5.0, coin: 12, scale: 0.9, radius: 0.36, height: 1.6,
-    colors: { skin: 0x9bc96b, shirt: 0xa84040, pants: 0x3a3a48 },
+    colors: { skin: 0xa5e87c, shirt: 0xf881a3, pants: 0x48596c },
     attackRange: 1.3, windup: 0.3, cooldown: 0.9, knockResist: 0,
   },
   tank: {
     name: '탱크', hp: 170, dmg: 22, speed: 1.9, coin: 28, scale: 1.45, radius: 0.62, height: 2.6,
-    colors: { skin: 0x4f7a45, shirt: 0x3a2a2a, pants: 0x222222 },
+    colors: { skin: 0x6cc9a2, shirt: 0x4587bf, pants: 0x3c5065 },
     attackRange: 1.9, windup: 0.6, cooldown: 1.5, knockResist: 0.7,
   },
   spitter: {
     name: '스피터', hp: 40, dmg: 10, speed: 2.0, coin: 18, scale: 1, radius: 0.4, height: 1.8,
-    colors: { skin: 0xb6d44a, shirt: 0x6a7a2a, pants: 0x3a3a48 },
+    colors: { skin: 0xc3e55d, shirt: 0x54bda7, pants: 0x526270 },
     attackRange: 14, windup: 0.5, cooldown: 2.2, knockResist: 0, ranged: true,
   },
   boss: {
     name: '보스', hp: 900, dmg: 30, speed: 2.6, coin: 320, scale: 2.4, radius: 1.0, height: 4.3,
-    colors: { skin: 0x5a2a2a, shirt: 0x1a1a1a, pants: 0x1a1a1a },
+    colors: { skin: 0xb1db75, shirt: 0xcf648e, pants: 0x484966 },
     attackRange: 3.2, windup: 0.8, cooldown: 2.0, knockResist: 0.85, boss: true,
   },
 };

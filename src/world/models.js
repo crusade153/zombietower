@@ -1,14 +1,18 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 16);
+const roundGeo = new RoundedBoxGeometry(1, 1, 1, 2, 0.14);
+const sphereGeo = new THREE.SphereGeometry(1, 16, 12);
 const matCache = new Map();
 
 export function lambert(color, emissive = 0x000000) {
   const key = `${color}-${emissive}`;
   let m = matCache.get(key);
   if (!m) {
-    m = new THREE.MeshLambertMaterial({ color, emissive });
+    m = new THREE.MeshStandardMaterial({ color, emissive, roughness: 0.72, metalness: 0.05 });
     matCache.set(key, m);
   }
   return m;
@@ -28,43 +32,126 @@ export function cyl(rTop, h, material, x = 0, y = 0, z = 0) {
   return m;
 }
 
+export function rounded(w, h, d, material, x = 0, y = 0, z = 0) {
+  const m = new THREE.Mesh(roundGeo, material);
+  m.scale.set(w, h, d);
+  m.position.set(x, y, z);
+  return m;
+}
+
+export function sphere(w, h, d, material, x = 0, y = 0, z = 0) {
+  const m = new THREE.Mesh(sphereGeo, material);
+  m.scale.set(w, h, d);
+  m.position.set(x, y, z);
+  return m;
+}
+
+export function disposeWorld(scene) {
+  const sharedGeometries = new Set([boxGeo, cylGeo, roundGeo, sphereGeo]);
+  const sharedMaterials = new Set(matCache.values());
+  const geometries = new Set();
+  const materials = new Set();
+  const textures = new Set();
+  scene.traverse((o) => {
+    if (o.geometry && !sharedGeometries.has(o.geometry)) geometries.add(o.geometry);
+    for (const m of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []) {
+      if (sharedMaterials.has(m)) continue;
+      materials.add(m);
+      for (const value of Object.values(m)) if (value?.isTexture) textures.add(value);
+    }
+    if (o.isLight && o.shadow) o.shadow.dispose();
+  });
+  textures.forEach((t) => t.dispose());
+  geometries.forEach((g) => g.dispose());
+  materials.forEach((m) => m.dispose());
+  scene.clear();
+}
+
 /**
  * 로블록스풍 박스 인간. 키 ≈ 1.8 (scale 곱).
  * 앞(얼굴)은 +Z 방향.
  */
 export function makeHumanoid({
-  skin = 0xffd2a8, shirt = 0x3b82f6, pants = 0x2b3a67, hair = 0x3a2a1a,
-  scale = 1, zombie = false, ownMaterials = false,
+  skin = 0xffc998, shirt = 0xff635e, pants = 0x32495b, hair = 0x503b38,
+  scale = 1, zombie = false, ownMaterials = false, variant = 'walker',
 } = {}) {
-  const mk = (c, e) => (ownMaterials ? new THREE.MeshLambertMaterial({ color: c, emissive: e || 0 }) : lambert(c, e));
+  const owned = [];
+  const mk = (c, e = 0) => {
+    if (!ownMaterials) return lambert(c, e);
+    const m = new THREE.MeshStandardMaterial({ color: c, emissive: e, roughness: 0.72 });
+    owned.push(m);
+    return m;
+  };
   const mats = { skin: mk(skin), shirt: mk(shirt), pants: mk(pants), hair: mk(hair) };
-  const eyeMat = zombie ? mk(0xff2a2a, 0xaa0000) : mk(0x1a1a1a);
+  const eyeMat = mk(0x202c35);
+  const white = mk(0xfff9e7);
+  const yellow = mk(0xffd854);
+  const teal = mk(0x36d4bd);
+  const pink = mk(0xf583a8);
   const root = new THREE.Group();
   const model = new THREE.Group();
   model.scale.setScalar(scale);
   root.add(model);
 
-  const torso = box(0.7, 0.7, 0.36, mats.shirt, 0, 1.05, 0);
+  const torso = new THREE.Group();
+  torso.position.set(0, 0.98, 0);
+  torso.add(rounded(0.72, 0.61, 0.43, mats.shirt));
   const head = new THREE.Group();
-  head.position.set(0, 1.61, 0);
-  head.add(box(0.5, 0.42, 0.5, mats.skin));
-  if (!zombie) head.add(box(0.54, 0.14, 0.54, mats.hair, 0, 0.19, -0.01));
-  else head.add(box(0.52, 0.08, 0.52, mk(0x2a3a22), 0, 0.2, -0.02));
-  head.add(box(0.09, 0.09, 0.03, eyeMat, -0.12, 0.04, 0.255));
-  head.add(box(0.09, 0.09, 0.03, eyeMat, 0.12, 0.04, 0.255));
-  head.add(box(0.2, 0.04, 0.03, eyeMat, 0, -0.1, 0.255));
+  head.position.set(0, 1.48, 0);
+  head.add(rounded(0.76, 0.64, 0.66, mats.skin));
+  for (const side of [-1, 1]) {
+    head.add(sphere(0.095, 0.12, 0.095, mats.skin, side * 0.39, -0.03, 0));
+    const eyeSize = zombie && side < 0 ? 1.2 : 1;
+    head.add(sphere(0.12 * eyeSize, 0.145 * eyeSize, 0.055, white, side * 0.165, 0.06, 0.321));
+    head.add(sphere(0.064, 0.08, 0.035, eyeMat, side * 0.16, 0.04, 0.37));
+    head.add(sphere(0.019, 0.025, 0.016, white, side * 0.16 - 0.016, 0.07, 0.397));
+    head.add(sphere(0.073, 0.04, 0.012, zombie ? mats.shirt : pink, side * 0.24, -0.115, 0.333));
+  }
+  head.add(rounded(0.22, zombie ? 0.16 : 0.085, 0.045, eyeMat, 0, -0.17, 0.333));
+  head.add(rounded(0.07, 0.07, 0.035, white, zombie ? -0.045 : 0, -0.13, 0.365));
+  head.add(sphere(0.05, 0.045, 0.04, mats.skin, 0, -0.035, 0.355));
+  if (!zombie) {
+    head.add(rounded(0.79, 0.19, 0.7, mats.shirt, 0, 0.29, -0.02));
+    head.add(rounded(0.65, 0.065, 0.44, mats.shirt, 0, 0.245, 0.36));
+    head.add(rounded(0.16, 0.14, 0.035, white, 0, 0.3, 0.346));
+    head.add(rounded(0.14, 0.19, 0.23, mats.hair, -0.31, 0.14, -0.1));
+    head.add(rounded(0.14, 0.19, 0.23, mats.hair, 0.31, 0.14, -0.1));
+    torso.add(rounded(0.58, 0.105, 0.51, yellow, 0, 0.28, 0));
+    torso.add(rounded(0.14, 0.25, 0.045, yellow, -0.16, 0.11, 0.24));
+    torso.add(rounded(0.48, 0.5, 0.28, teal, 0, -0.01, -0.31));
+    torso.add(rounded(0.32, 0.18, 0.08, yellow, 0, -0.12, -0.47));
+    for (const side of [-1, 1]) torso.add(rounded(0.06, 0.49, 0.025, teal, side * 0.24, -0.01, 0.23));
+    torso.add(rounded(0.04, 0.44, 0.015, white, 0, -0.03, 0.22));
+  } else {
+    head.add(rounded(0.18, 0.035, 0.015, mats.hair, 0.19, 0.24, 0.325));
+    head.add(rounded(0.025, 0.1, 0.02, eyeMat, 0.15, 0.24, 0.336));
+    head.add(rounded(0.025, 0.1, 0.02, eyeMat, 0.22, 0.24, 0.336));
+    head.add(rounded(0.24, 0.1, 0.38, mats.hair, -0.16, 0.33, -0.03));
+    for (const side of [-1, 1]) head.add(cyl(0.07, 0.12, white, side * 0.37, -0.17, -0.1));
+    torso.add(rounded(0.12, 0.12, 0.025, yellow, -0.18, 0.08, 0.225));
+    if (variant === 'runner') {
+      head.add(rounded(0.8, 0.07, 0.7, pink, 0, 0.19, 0));
+    } else if (variant === 'tank' || variant === 'boss') {
+      head.add(rounded(0.83, 0.17, 0.72, variant === 'boss' ? yellow : teal, 0, 0.32, 0));
+      for (const side of [-1, 0, 1]) head.add(rounded(0.14, 0.2, 0.15, yellow, side * 0.25, 0.45, 0));
+    } else if (variant === 'spitter') {
+      torso.add(sphere(0.2, 0.22, 0.14, pink, 0, 0.01, 0.21));
+    }
+  }
 
   const makeArm = (side) => {
     const g = new THREE.Group();
-    g.position.set(side * 0.46, 1.38, 0);
-    g.add(box(0.22, 0.46, 0.22, mats.shirt, 0, -0.23, 0));
-    g.add(box(0.22, 0.24, 0.22, mats.skin, 0, -0.58, 0));
+    g.position.set(side * 0.46, 1.23, 0);
+    g.add(rounded(0.25, 0.36, 0.27, mats.shirt, 0, -0.17, 0));
+    g.add(rounded(0.22, 0.22, 0.24, zombie ? mats.skin : white, 0, -0.44, 0));
     return g;
   };
   const makeLeg = (side) => {
     const g = new THREE.Group();
-    g.position.set(side * 0.17, 0.7, 0);
-    g.add(box(0.3, 0.7, 0.3, mats.pants, 0, -0.35, 0));
+    g.position.set(side * 0.18, 0.68, 0);
+    g.add(rounded(0.28, 0.48, 0.3, mats.pants, 0, -0.23, 0));
+    g.add(rounded(0.32, 0.19, 0.46, zombie ? pink : mats.shirt, 0, -0.54, 0.065));
+    g.add(rounded(0.33, 0.065, 0.47, white, 0, -0.635, 0.065));
     return g;
   };
   const armL = makeArm(-1);
@@ -72,23 +159,42 @@ export function makeHumanoid({
   const legL = makeLeg(-1);
   const legR = makeLeg(1);
   const hand = new THREE.Group();
-  hand.position.set(0, -0.68, 0);
+  hand.position.set(0, -0.52, 0);
   armR.add(hand);
   model.add(torso, head, armL, armR, legL, legR);
-  return { root, model, parts: { head, torso, armL, armR, legL, legR, hand }, materials: Object.values(mats), eyeMat };
+  // Merge rigid pieces by material; the head and each limb can still animate.
+  for (const part of [torso, head, armL, armR, legL, legR]) {
+    const batches = new Map();
+    for (const mesh of [...part.children]) {
+      if (!mesh.isMesh) continue;
+      mesh.updateMatrix();
+      const geo = (mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone()).applyMatrix4(mesh.matrix);
+      if (!batches.has(mesh.material)) batches.set(mesh.material, []);
+      batches.get(mesh.material).push(geo);
+      part.remove(mesh);
+    }
+    for (const [material, geos] of batches) {
+      const geo = mergeGeometries(geos, false);
+      geos.forEach((piece) => piece.dispose());
+      part.add(new THREE.Mesh(geo, material));
+    }
+  }
+  model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return { root, model, parts: { head, torso, armL, armR, legL, legR, hand }, materials: ownMaterials ? owned : Object.values(mats), eyeMat };
 }
 
 /** 무기 모델. 근접: +Z로 뻗음(팔을 앞으로 들면 위를 향함). 총: −Y로 뻗음(팔을 앞으로 들면 정면). */
 export function makeWeaponMesh(kind, accent = 0xc9ced6) {
   const g = new THREE.Group();
-  const wood = lambert(0xb5833c);
+  const wood = lambert(0xffca4b);
   const dark = lambert(0x2a2a2e);
   const steel = lambert(0xaab3c0);
   const acc = lambert(accent, accent);
   switch (kind) {
     case 'bat':
       g.add(box(0.07, 0.07, 0.32, wood, 0, 0, 0.12));
-      g.add(box(0.15, 0.15, 0.75, wood, 0, 0, 0.62));
+      g.add(rounded(0.22, 0.22, 0.75, wood, 0, 0, 0.62));
+      for (const z of [0.45, 0.68, 0.9]) g.add(rounded(0.23, 0.23, 0.04, lambert(0xff6d76), 0, 0, z));
       g.add(box(0.17, 0.17, 0.06, acc, 0, 0, 0.3));
       break;
     case 'axe':
@@ -137,17 +243,18 @@ export function makeBlob(radius = 0.55) {
 
 export function makeChest() {
   const g = new THREE.Group();
-  const wood = lambert(0x8a5a2b);
-  const gold = lambert(0xe0a82a, 0x3a2a00);
-  g.add(box(1.5, 0.8, 1.0, wood, 0, 0.4, 0));
+  const wood = lambert(0x7668cc);
+  const gold = lambert(0xffd44d, 0x292000);
+  g.add(rounded(1.5, 0.8, 1.0, wood, 0, 0.4, 0));
   g.add(box(1.56, 0.14, 1.06, gold, 0, 0.12, 0));
   g.add(box(1.56, 0.14, 1.06, gold, 0, 0.72, 0));
   const lid = new THREE.Group();
   lid.position.set(0, 0.8, -0.5);
-  lid.add(box(1.5, 0.4, 1.0, wood, 0, 0.2, 0.5));
+  lid.add(rounded(1.5, 0.4, 1.0, wood, 0, 0.2, 0.5));
   lid.add(box(1.56, 0.12, 1.06, gold, 0, 0.36, 0.5));
   g.add(lid);
-  g.add(box(0.22, 0.3, 0.1, gold, 0, 0.78, 0.52));
+  g.add(rounded(0.28, 0.3, 0.12, gold, 0, 0.65, 0.54));
+  g.add(sphere(0.07, 0.07, 0.04, lambert(0x5b408a), 0, 0.67, 0.615));
   const glow = new THREE.Mesh(
     new THREE.CylinderGeometry(0.9, 1.1, 8, 20, 1, true),
     new THREE.MeshBasicMaterial({ color: 0xffd060, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }),
@@ -159,22 +266,40 @@ export function makeChest() {
 
 export function makeForge() {
   const g = new THREE.Group();
-  const iron = lambert(0x3a3c44);
-  const steel = lambert(0x8a93a3);
-  g.add(box(0.9, 0.6, 0.7, iron, 0, 0.3, 0));
-  g.add(box(1.4, 0.3, 0.6, steel, 0, 0.75, 0));
-  g.add(box(0.5, 0.18, 0.3, steel, 0.85, 0.75, 0));
-  const fire = box(0.8, 0.5, 0.8, lambert(0xff7a1a, 0xff5500), 1.9, 0.25, 0);
+  const iron = lambert(0x597081);
+  const steel = lambert(0xb2c8d2);
+  const teal = lambert(0x43bba7);
+  const gold = lambert(0xffd258);
+  g.add(rounded(1.35, 0.16, 1.05, iron, 0, 0.08, 0));
+  g.add(rounded(0.9, 0.6, 0.7, teal, 0, 0.42, 0));
+  g.add(rounded(1.4, 0.3, 0.65, steel, 0, 0.8, 0));
+  g.add(rounded(0.5, 0.18, 0.32, steel, 0.8, 0.8, 0));
+  g.add(rounded(0.32, 0.16, 0.07, gold, 0, 0.43, 0.39));
+  const fire = sphere(0.45, 0.9, 0.45, lambert(0xffaa41, 0xff571e), 1.9, 0.35, 0);
   g.add(fire);
-  g.add(box(1.0, 0.1, 1.0, iron, 1.9, 0.05, 0));
+  g.add(rounded(1.05, 0.3, 1.05, iron, 1.9, 0.15, 0));
+  g.add(rounded(1.15, 0.14, 1.15, teal, 1.9, 0.04, 0));
+  g.add(rounded(0.08, 0.75, 0.09, gold, -0.42, 1.12, 0));
+  g.add(rounded(0.42, 0.24, 0.26, steel, -0.42, 1.48, 0));
+  for (const side of [-1, 1]) g.add(cyl(0.06, 0.45, steel, 1.9 + side * 0.37, 0.5, 0));
   return { group: g, fire };
 }
 
 export function makeWaterStation() {
   const g = new THREE.Group();
-  g.add(cyl(0.6, 1.4, lambert(0x2a8cff, 0x0a3a7a), 0, 0.7, 0));
-  g.add(cyl(0.65, 0.12, lambert(0xcfe3ff), 0, 1.4, 0));
-  g.add(box(0.2, 0.2, 0.8, lambert(0xcfe3ff), 0, 1.0, 0.7));
+  const blue = lambert(0x4daed5, 0x06242d);
+  const white = lambert(0xe4f5f1);
+  const dark = lambert(0x4b697b);
+  const gold = lambert(0xffcc51);
+  g.add(rounded(1.3, 0.17, 1.12, dark, 0, 0.085, 0));
+  g.add(cyl(0.51, 1.25, blue, 0, 0.79, 0));
+  for (const y of [0.24, 1.34]) g.add(cyl(0.57, 0.15, white, 0, y, 0));
+  g.add(sphere(0.48, 0.22, 0.48, white, 0, 1.45, 0));
+  g.add(rounded(0.22, 0.2, 0.55, dark, 0, 0.95, 0.63));
+  g.add(rounded(0.28, 0.27, 0.16, gold, 0, 0.95, 0.91));
+  g.add(rounded(0.18, 0.56, 0.08, white, 0.57, 0.79, 0.03));
+  g.add(rounded(0.2, 0.26, 0.1, gold, 0.57, 0.65, 0.03));
+  for (const x of [-0.19, 0.19]) g.add(sphere(0.065, 0.065, 0.015, white, x, 1.1, 0.48));
   return g;
 }
 
@@ -200,9 +325,10 @@ export function makeWaterPickup() {
 }
 
 export function makeCoin() {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 14), lambert(0xffcf3a, 0x8a5a00));
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.085, 20), lambert(0xffcc36, 0x423000));
   m.rotation.x = Math.PI / 2;
   const g = new THREE.Group();
   g.add(m);
+  g.add(rounded(0.07, 0.29, 0.04, lambert(0xfff4b6), 0, 0, 0.055));
   return g;
 }

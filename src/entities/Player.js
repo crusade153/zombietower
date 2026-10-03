@@ -20,7 +20,7 @@ const ease = (t) => 1 - (1 - t) * (1 - t);
 
 export class Player {
   constructor(scene) {
-    const h = makeHumanoid({ shirt: 0x3b82f6, pants: 0x2b3a67, skin: 0xffd2a8, hair: 0x4a2f1a });
+    const h = makeHumanoid();
     this.h = h;
     this.root = h.root;
     this.parts = h.parts;
@@ -165,6 +165,11 @@ export class Player {
     const speed = Math.hypot(this.mv.x, this.mv.z);
     const run = Math.min(1, speed / PHYS.moveSpeed);
     const p = this.parts;
+    const bob = b.grounded ? Math.sin(this.animT * 2) * 0.045 * run : 0;
+    this.h.model.position.y = bob + Math.sin(time * 2.8) * 0.014 * (1 - run);
+    this.h.model.rotation.z = Math.sin(this.animT) * 0.045 * run;
+    const stretch = !b.grounded ? 1.04 : 1;
+    this.h.model.scale.set(1 / Math.sqrt(stretch), stretch, 1 / Math.sqrt(stretch));
     if (!b.grounded) {
       p.legL.rotation.x = -0.55; p.legR.rotation.x = 0.45;
       p.armL.rotation.x = -2.6;

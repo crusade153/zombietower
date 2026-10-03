@@ -4,6 +4,7 @@ import {
   weaponDamage, weaponName, upgradeCost, canUpgrade, sellValue, weaponDps, perks, chestOdds,
 } from '../combat/Weapons.js';
 import { weaponByUid } from '../core/Save.js';
+import { icon } from './icons.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = (n) => Math.round(n).toLocaleString();
@@ -27,12 +28,14 @@ export class Screens {
   get open() { return !this.el.classList.contains('hidden'); }
 
   _show(html) {
+    this.el.classList.remove('title-screen');
     this.el.innerHTML = html;
     this.el.classList.remove('hidden');
     this.el.scrollTop = 0;
   }
 
   hide() {
+    this.el.classList.remove('title-screen');
     this.el.classList.add('hidden');
     this.el.innerHTML = '';
     this.mode = null;
@@ -45,6 +48,7 @@ export class Screens {
       case 'new': this.hide(); g.startRun(false); break;
       case 'start': this.hide(); g.startRun(true); break;
       case 'diff': g.setDifficulty(data.v); this.showTitle(); break;
+      case 'title-mute': g.toggleMute(); this.showTitle(); break;
       case 'close': this.hide(); g.closeModal(); break;
       case 'resume': this.hide(); g.resume(); break;
       case 'mute': g.toggleMute(); this.showPause(); break;
@@ -68,19 +72,19 @@ export class Screens {
     const g = this.g;
     const s = g.save;
     const progress = s.lastSafe > 0 || s.coins > 0 || s.weapons.length > 1;
-    const diffBtn = (k, label) => `<button class="btn ${s.difficulty === k ? '' : 'sub'}" data-act="diff" data-v="${k}" style="font-size:calc(var(--u)*2.2)">${label}</button>`;
+    const diffBtn = (k, label) => `<button class="difficulty-btn ${s.difficulty === k ? 'selected' : ''}" data-act="diff" data-v="${k}" aria-pressed="${s.difficulty === k}">${label}</button>`;
     this._show(`
-      <div class="panel">
-        <h1>🧟 좀비 타워 🔥</h1>
-        <p>차오르는 용암을 피해 좀비가 우글대는 타워를 올라가라!<br>안전구역마다 보물상자와 대장간이 기다린다. 꼭대기(10층)까지 탈출하면 승리!</p>
-        <div class="row" style="margin:1.4vmin 0">
-          ${progress
-    ? `<button class="btn green" data-act="continue">▶ 이어하기 <small>(안전구역 ${s.lastSafe}${s.loop ? ` · ${s.loop + 1}회차` : ''})</small></button><button class="btn sub" data-act="new">새 게임</button>`
-    : '<button class="btn green" data-act="start">▶ 게임 시작</button>'}
-        </div>
-        <p class="hint">난이도 ${diffBtn('easy', '쉬움')}${diffBtn('normal', '보통')}${diffBtn('hard', '어려움')}</p>
-        <p class="hint">왼쪽 십자키 이동 · 오른쪽 ⤒ 점프 / ⚔️ 공격(누르고 있으면 연속) / 💧 물대포 · 빈 화면 드래그로 시점 회전<br>PC: WASD 이동 · Space 점프 · J 공격 · 1/2/3 무기 · Q 물대포</p>
-      </div>`);
+      <div class="lobby-top"><span class="wordmark">${icon('bag')} ZOMBIE TOWER<span class="edition">ADVENTURE CLUB</span></span><button class="lobby-sound" data-act="title-mute" aria-label="${g.audio.muted ? '소리 켜기' : '소리 끄기'}" title="${g.audio.muted ? '소리 켜기' : '소리 끄기'}">${icon(g.audio.muted ? 'muted' : 'sound')}</button></div>
+      <div class="lobby-menu">
+        <div class="lobby-eyebrow"><span></span> THE FLOOR IS LAVA</div>
+        <h1><span>좀비</span><br><strong>타워<span class="title-dot">!</span></strong></h1>
+        <p class="lobby-tagline">좀비를 뚫고, 용암을 넘어.<br> 우리의 모험은 위로!</p>
+        <div class="difficulty" role="group" aria-label="난이도">${diffBtn('easy', '쉬움')}${diffBtn('normal', '보통')}${diffBtn('hard', '어려움')}</div>
+        <button class="start-button" data-act="${progress ? 'continue' : 'start'}">${icon('play')}<span>${progress ? '이어서 올라가기' : '모험 시작'}</span>${icon('arrow')}</button>
+        ${progress ? `<button class="new-button" data-act="new">${icon('restart')} 새 모험</button><span class="save-note">${s.lastSafe}층에서 계속${s.loop ? ` · ${s.loop + 1}번째 모험` : ''}</span>` : ''}
+      </div>
+      <div class="lobby-footer"><span>${icon('flag')} 오늘은 꼭, 꼭대기까지.</span><span class="tower-goal">${icon('trophy')} <b>10</b> FLOORS TO FREEDOM</span></div>`);
+    this.el.classList.add('title-screen');
   }
 
   // ---------- 일시정지 ----------
@@ -88,10 +92,10 @@ export class Screens {
     const g = this.g;
     this._show(`
       <div class="panel">
-        <h2>⏸ 일시정지</h2>
+        <h2>${icon('pause')} 잠깐 쉬어가기</h2>
         <div class="row" style="flex-direction:column;align-items:center">
-          <button class="btn green" data-act="resume">▶ 계속하기</button>
-          <button class="btn sub" data-act="mute">${g.audio.muted ? '🔇 소리 켜기' : '🔊 소리 끄기'}</button>
+          <button class="btn green" data-act="resume">${icon('play')} 계속하기</button>
+          <button class="btn sub" data-act="mute">${icon(g.audio.muted ? 'muted' : 'sound')} ${g.audio.muted ? '소리 켜기' : '소리 끄기'}</button>
           <button class="btn sub" data-act="title">타이틀로</button>
         </div>
       </div>`);
@@ -194,7 +198,7 @@ export class Screens {
           </div>
         </div>
         <button class="btn" data-act="close">닫기</button>
-        <p class="hint">전투 중 교체할 무기를 슬롯 1~3에 장착하세요. 강화는 +${ECON.maxLevel}까지.</p>
+        <p class="hint">보관함 ${s.weapons.length} / 12 · 최대 강화 +${ECON.maxLevel}</p>
       </div>`);
   }
 

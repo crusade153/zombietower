@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+const boxGeo = new THREE.OctahedronGeometry(0.7);
 const basicCache = new Map();
 function basic(color, opacity = 1) {
   const key = `${color}-${opacity}`;
@@ -34,6 +34,12 @@ export class Effects {
     this.ringGeo.rotateX(-Math.PI / 2);
   }
 
+  confetti(x, y, z) {
+    for (const color of [0xffd75d, 0xff7d9c, 0x76e0c3, 0xbfa6f0]) {
+      this.burst(x, y, z, color, 9, 6, 1.4, 0.15);
+    }
+  }
+
   burst(x, y, z, color, count = 8, speed = 4, life = 0.5, size = 0.14) {
     for (let i = 0; i < count; i++) {
       let p = this.free.pop();
@@ -59,12 +65,19 @@ export class Effects {
 
   /** 근접 공격 부채꼴 */
   slash(x, y, z, yaw, range, arcDeg, color = 0xfff2b0) {
-    const mesh = new THREE.Mesh(fanGeo(arcDeg), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide }));
+    const mesh = new THREE.Mesh(fanGeo(arcDeg), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide }));
     mesh.position.set(x, y + 0.9, z);
     mesh.rotation.y = yaw;
     mesh.scale.set(range, 1, range);
     this.scene.add(mesh);
-    this.timed.push({ mesh, t: 0, life: 0.16, kind: 'fade', base: 0.55 });
+    this.timed.push({ mesh, t: 0, life: 0.2, kind: 'fade', base: 0.45 });
+    const arc = (arcDeg * Math.PI) / 180;
+    const edge = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 32, 1, -Math.PI / 2 - arc / 2, arc).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+    edge.position.copy(mesh.position);
+    edge.rotation.copy(mesh.rotation);
+    edge.scale.copy(mesh.scale);
+    this.scene.add(edge);
+    this.timed.push({ mesh: edge, t: 0, life: 0.22, kind: 'fade', base: 0.9, ownGeometry: true });
   }
 
   /** 직선(채찍/총알 궤적) */
@@ -102,6 +115,8 @@ export class Effects {
       p.mesh.position.x += p.vx * dt;
       p.mesh.position.y += p.vy * dt;
       p.mesh.position.z += p.vz * dt;
+      p.mesh.rotation.x += dt * 4;
+      p.mesh.rotation.z += dt * 3;
     }
     for (let i = this.timed.length - 1; i >= 0; i--) {
       const f = this.timed[i];
@@ -110,6 +125,7 @@ export class Effects {
       if (k >= 1) {
         this.scene.remove(f.mesh);
         f.mesh.material.dispose();
+        if (f.ownGeometry) f.mesh.geometry.dispose();
         this.timed.splice(i, 1);
         continue;
       }
