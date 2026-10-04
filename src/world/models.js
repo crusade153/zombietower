@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { makeClassicHumanoid } from './ClassicHumanoid.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { weaponAppearance } from '../combat/Weapons.js';
@@ -9,18 +10,24 @@ const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 16);
 const roundGeo = new RoundedBoxGeometry(1, 1, 1, 2, 0.14);
 const sphereGeo = new THREE.SphereGeometry(1, 16, 12);
 const matCache = new Map();
+let modelStyle = 'polished';
+export function setModelStyle(style) { modelStyle = style === 'classic' ? 'classic' : 'polished'; }
+export function getModelStyle() { return modelStyle; }
 
 export function lambert(color, emissive = 0x000000) {
-  const key = `${color}-${emissive}`;
+  const key = `${modelStyle}-${color}-${emissive}`;
   let m = matCache.get(key);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ color, emissive, roughness: 0.72, metalness: 0.05 });
+    m = modelStyle === 'classic'
+      ? new THREE.MeshLambertMaterial({ color, emissive })
+      : new THREE.MeshStandardMaterial({ color, emissive, roughness: 0.72, metalness: 0.05 });
     matCache.set(key, m);
   }
   return m;
 }
 
 export function metal(color, roughness = 0.28) {
+  if (modelStyle === 'classic') return lambert(color);
   const key = `metal-${color}-${roughness}`;
   if (!matCache.has(key)) matCache.set(key, new THREE.MeshStandardMaterial({ color, metalness: 0.78, roughness }));
   return matCache.get(key);
@@ -67,14 +74,14 @@ export function cyl(rTop, h, material, x = 0, y = 0, z = 0) {
 }
 
 export function rounded(w, h, d, material, x = 0, y = 0, z = 0) {
-  const m = new THREE.Mesh(roundGeo, material);
+  const m = new THREE.Mesh(modelStyle === 'classic' ? boxGeo : roundGeo, material);
   m.scale.set(w, h, d);
   m.position.set(x, y, z);
   return m;
 }
 
 export function sphere(w, h, d, material, x = 0, y = 0, z = 0) {
-  const m = new THREE.Mesh(sphereGeo, material);
+  const m = new THREE.Mesh(modelStyle === 'classic' ? boxGeo : sphereGeo, material);
   m.scale.set(w, h, d);
   m.position.set(x, y, z);
   return m;
@@ -105,7 +112,23 @@ export function disposeWorld(scene) {
  * 로블록스풍 박스 인간. 키 ≈ 1.8 (scale 곱).
  * 앞(얼굴)은 +Z 방향.
  */
-export function makeHumanoid({
+export function makeHumanoid(options = {}) {
+  return modelStyle === 'classic'
+    ? makeClassicHumanoid(options, { box, lambert })
+    : makePolishedHumanoid(options);
+}
+
+// Keep the outer root: combat, death animation and physics retain their references.
+export function replaceHumanoid(previous, options = {}) {
+  const next = makeHumanoid(options);
+  next.model.removeFromParent();
+  disposeWorld(previous.root);
+  previous.root.add(next.model);
+  next.root = previous.root;
+  return next;
+}
+
+function makePolishedHumanoid({
   skin = 0xffc998, shirt = 0xff635e, pants = 0x32495b, hair = 0x503b38,
   scale = 1, zombie = false, ownMaterials = false, variant = 'walker',
 } = {}) {

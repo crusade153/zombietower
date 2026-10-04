@@ -22,7 +22,26 @@ const server = http.createServer(async (req, res) => {
     if (!target.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
     const stat = await fs.stat(target);
     if (!stat.isFile()) { res.writeHead(404).end(); return; }
-    res.setHeader('Content-Type', mime[path.extname(target)] || 'application/octet-stream');
+    const extension = path.extname(target);
+    res.setHeader('Content-Type', extension === '.mp3' ? 'audio/mpeg' : (mime[extension] || 'application/octet-stream'));
+    if (extension === '.mp3') {
+      res.setHeader('Accept-Ranges', 'bytes');
+      if (req.headers.range) {
+        const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range);
+        let start = range && range[1] ? Number(range[1]) : 0;
+        let end = range && range[2] ? Number(range[2]) : stat.size - 1;
+        if (range && !range[1] && range[2]) { start = Math.max(0, stat.size - Number(range[2])); end = stat.size - 1; }
+        end = Math.min(end, stat.size - 1);
+        if (!range || (!range[1] && !range[2]) || start > end || start >= stat.size) {
+          res.writeHead(416, { 'Content-Range': `bytes */${stat.size}` }).end();
+          return;
+        }
+        const body = await fs.readFile(target);
+        res.writeHead(206, { 'Content-Range': `bytes ${start}-${end}/${stat.size}`, 'Content-Length': end - start + 1 });
+        res.end(req.method === 'HEAD' ? undefined : body.subarray(start, end + 1));
+        return;
+      }
+    }
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Vary', 'Accept-Encoding');

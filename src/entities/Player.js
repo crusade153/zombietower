@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { PHYS, PLAYER } from '../config/balance.js';
 import { WEAPONS } from '../config/weapons.js';
 import { moveAndCollide } from '../core/physics.js';
-import { makeHumanoid, makeBlob, makeWeaponMesh, disposeWorld } from '../world/models.js';
+import { makeHumanoid, makeBlob, makeWeaponMesh, disposeWorld, replaceHumanoid } from '../world/models.js';
 
 export function groundYBelow(x, y, z, plats) {
   let best = null;
@@ -74,6 +74,7 @@ export class Player {
   }
 
   setWeapon(w) {
+    this.weapon = w;
     const key = w ? `${w.uid}:${w.kind}:${w.rarity}:${w.level}` : null;
     if (key === this.weaponKey) return;
     this.weaponKey = key;
@@ -86,6 +87,14 @@ export class Player {
     if (!w) return;
     this.weaponMesh = makeWeaponMesh(w);
     this.parts.hand.add(this.weaponMesh);
+  }
+
+  setGraphicsStyle() {
+    this.h = replaceHumanoid(this.h);
+    this.parts = this.h.parts;
+    this.weaponMesh = null;
+    this.weaponKey = undefined;
+    this.setWeapon(this.weapon);
   }
 
   startSwing(dur, kind) { this.swing = { t: 0, dur, kind }; }

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { PHYS } from '../config/balance.js';
 import { ZOMBIES, hpScale, dmgScale, coinScale } from '../config/zombies.js';
 import { moveAndCollide, groundBelow } from '../core/physics.js';
-import { makeHumanoid, makeBlob } from '../world/models.js';
+import { makeHumanoid, makeBlob, replaceHumanoid, disposeWorld } from '../world/models.js';
 
 const barGeo = new THREE.PlaneGeometry(1, 0.14);
 const barBg = new THREE.MeshBasicMaterial({ color: 0x000000, depthTest: false, transparent: true, opacity: 0.7 });
@@ -68,6 +68,15 @@ export class Zombie {
   }
 
   /** @returns 사망 여부 */
+  setGraphicsStyle() {
+    const d = this.def;
+    this.h = replaceHumanoid(this.h, {
+      skin: d.colors.skin, shirt: d.colors.shirt, pants: d.colors.pants,
+      scale: d.scale, zombie: true, ownMaterials: true, variant: this.type,
+    });
+    this.parts = this.h.parts;
+  }
+
   takeDamage(g, dmg, o = {}) {
     if (this.dead) return false;
     if (this.def.finalBoss && !g.finalBattle) return false;
@@ -359,7 +368,7 @@ export class Zombie {
   }
 
   dispose(g) {
-    this.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    disposeWorld(this.root);
     g.scene.remove(this.root, this.blob, this.bar);
     this.blob.geometry.dispose();
     this.blob.material.dispose();

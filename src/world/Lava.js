@@ -15,6 +15,7 @@ const FRAG = /* glsl */ `
 precision highp float;
 uniform float uTime;
 uniform float uFrozen;
+uniform float uClassic;
 varying vec3 vWorld;
 float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float noise(vec2 p) {
@@ -28,6 +29,12 @@ float fbm(vec2 p) {
   return v;
 }
 void main() {
+  if (uClassic > 0.5) {
+    float tile = hash(floor(vWorld.xz * 0.4));
+    vec3 block = mix(vec3(1.0, 0.24, 0.035), vec3(1.0, 0.55, 0.12), step(0.55, tile));
+    gl_FragColor = vec4(mix(block, vec3(0.45, 0.85, 1.0), uFrozen), 1.0);
+    return;
+  }
   vec2 p = vWorld.xz * 0.07;
   float t = uTime * 0.12;
   float n1 = fbm(p + vec2(t, t * 0.6));
@@ -63,7 +70,7 @@ export class Lava {
       type: 'lavafloor', solid: false, moved: false, dx: 0, dy: 0, dz: 0, x: 0, z: 0,
       minX: -700, maxX: 700, minZ: -700, maxZ: 700, minY: -5, maxY: 0,
     };
-    this.uniforms = { uTime: { value: 0 }, uFrozen: { value: 0 } };
+    this.uniforms = { uTime: { value: 0 }, uFrozen: { value: 0 }, uClassic: { value: 0 } };
     const geo = new THREE.PlaneGeometry(1400, 1400, 96, 96);
     geo.rotateX(-Math.PI / 2);
     this.mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: this.uniforms }));
@@ -73,6 +80,10 @@ export class Lava {
   }
 
   get frozen() { return this.state === 'frozen'; }
+
+  setGraphicsStyle(style) {
+    this.uniforms.uClassic.value = style === 'classic' ? 1 : 0;
+  }
 
   /** 안전구역: 용암을 y까지 서서히 내리고 대기 */
   setIdle(y) {

@@ -14,7 +14,7 @@ export class Hud {
       stage: $('stage-text'), lavaFill: $('lava-fill'), lavaGap: $('lava-gap'), lavaMeter: document.querySelector('.lava-meter'),
       vignette: $('vignette'), toast: $('toast'), debug: $('debug'), floaters: $('floaters'),
       slots: $('weapon-slots'), water: $('btn-water'), waterCount: $('water-count'), ctx: $('ctx-buttons'),
-      pause: $('btn-pause'), mute: $('btn-mute'),
+      pause: $('btn-pause'), mute: $('btn-mute'), graphics: $('btn-graphics'),
     };
     this._last = {};
     this._toastT = null;
@@ -37,6 +37,14 @@ export class Hud {
   show(v) {
     this.el.hud.classList.toggle('hidden', !v);
     this.el.controls.classList.toggle('hidden', !v);
+  }
+
+  setGraphicsStyle(style) {
+    const classic = style === 'classic';
+    this.el.graphics.textContent = `그래픽 · ${classic ? '블록' : '현재'}`;
+    this.el.graphics.setAttribute('aria-label', classic ? '현재 그래픽으로 변경' : '초기 블록 그래픽으로 변경');
+    this.el.graphics.setAttribute('aria-pressed', String(classic));
+    this.el.graphics.title = classic ? '현재 그래픽으로 변경' : '초기 블록 그래픽으로 변경';
   }
 
   _set(key, val, fn) {

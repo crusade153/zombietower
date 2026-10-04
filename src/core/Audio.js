@@ -1,34 +1,103 @@
 // WebAudio로 만든 간단한 효과음 (파일 없음). iOS는 첫 터치에서 unlock() 필요.
 
 export class AudioSys {
-  constructor() {
+  constructor({ musicVolume = 0.35, effectsVolume = 0.8 } = {}) {
     this.ctx = null;
     this.master = null;
     this.muted = false;
     this.noiseBuf = null;
     this.rumble = null;
+    this.musicVolume = musicVolume;
+    this.effectsVolume = effectsVolume;
+    this.playing = false;
+    this.background = document.hidden;
+    this.music = new Audio('/audio/one-false-move.mp3');
+    this.music.loop = true;
+    this.music.preload = 'none';
+    this.music.setAttribute('playsinline', '');
+    this.musicGain = null;
+    this.musicPending = false;
+    this.lastImpact = -1;
   }
 
   unlock() {
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
+      if (!AC) { this._updateVolumes(); this._syncMusic(); return; }
       this.ctx = new AC();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.muted ? 0 : 0.55;
-      this.master.connect(this.ctx.destination);
+      // A shared compressor keeps rapid fire and multiple simultaneous hits in range.
+      this.compressor = this.ctx.createDynamicsCompressor();
+      this.compressor.threshold.value = -12;
+      this.compressor.knee.value = 12;
+      this.compressor.ratio.value = 4;
+      this.compressor.attack.value = 0.003;
+      this.compressor.release.value = 0.14;
+      this.compressor.connect(this.ctx.destination);
+      this.master.connect(this.compressor);
+      this.musicGain = this.ctx.createGain();
+      this.musicSource = this.ctx.createMediaElementSource(this.music);
+      this.musicSource.connect(this.musicGain);
+      this.musicGain.connect(this.compressor);
+      this._updateVolumes();
       const len = this.ctx.sampleRate * 1;
       this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
       const d = this.noiseBuf.getChannelData(0);
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
       this._startRumble();
     }
-    if (this.ctx.state === 'suspended') this.ctx.resume();
+    if (this.ctx.state === 'suspended' || this.ctx.state === 'interrupted') this.ctx.resume().catch(() => {});
+    this._syncMusic();
   }
 
   setMuted(m) {
     this.muted = m;
-    if (this.master) this.master.gain.value = m ? 0 : 0.55;
+    this._updateVolumes();
+    this._syncMusic();
+  }
+
+  setVolume(channel, volume) {
+    if (!['music', 'effects'].includes(channel) || !Number.isFinite(volume)) return;
+    this[`${channel}Volume`] = Math.max(0, Math.min(1, volume));
+    this._updateVolumes();
+    this._syncMusic();
+  }
+
+  _updateVolumes() {
+    if (!this.ctx) {
+      // Media playback can still work on browsers without the Web Audio API.
+      this.music.volume = this.musicVolume * 0.65;
+      this.music.muted = this.muted || this.background;
+      return;
+    }
+    this.master.gain.setTargetAtTime(this.muted || this.background ? 0 : this.effectsVolume * 0.65, this.ctx.currentTime, 0.025);
+    this.musicGain.gain.setTargetAtTime(this.muted || this.background ? 0 : this.musicVolume * 0.65, this.ctx.currentTime, 0.08);
+  }
+
+  setPlaying(playing) {
+    if (this.playing === playing) return;
+    this.playing = playing;
+    if (!playing && this.rumble) this.rumble.gain.value = 0;
+    this._syncMusic();
+  }
+
+  setBackground(background) {
+    this.background = background;
+    this._updateVolumes();
+    this._syncMusic();
+  }
+
+  _wantsMusic() { return this.playing && !this.background && !this.muted && this.musicVolume > 0; }
+
+  _syncMusic() {
+    if (!this._wantsMusic()) { this.music.pause(); return; }
+    if (this.musicPending || !this.music.paused) return;
+    this.musicPending = true;
+    this.music.play().then(() => {
+      // A pause/mute can arrive while Safari is still starting the stream.
+      if (!this._wantsMusic()) this.music.pause();
+    }).catch(() => { /* Retry on the next user gesture when autoplay is blocked. */ })
+      .finally(() => { this.musicPending = false; });
   }
 
   _startRumble() {
@@ -47,7 +116,7 @@ export class AudioSys {
 
   /** 용암과의 가까움(0~1)에 따라 으르렁 소리 */
   setLavaProximity(v) {
-    if (this.rumble) this.rumble.gain.setTargetAtTime(Math.max(0, Math.min(1, v)) * 0.55, this.ctx.currentTime, 0.2);
+    if (this.rumble) this.rumble.gain.setTargetAtTime(this.playing ? Math.max(0, Math.min(1, v)) * 0.55 : 0, this.ctx.currentTime, 0.2);
   }
 
   _tone(freq, freq2, dur, type = 'square', vol = 0.2, delay = 0) {
@@ -62,6 +131,7 @@ export class AudioSys {
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(this.master);
     o.start(t); o.stop(t + dur + 0.02);
+    o.onended = () => { o.disconnect(); g.disconnect(); };
   }
 
   _noise(dur, vol = 0.3, f0 = 2000, f1 = 400, type = 'bandpass', delay = 0) {
@@ -78,19 +148,42 @@ export class AudioSys {
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     s.connect(f); f.connect(g); g.connect(this.master);
     s.start(t, Math.random() * 0.5, dur + 0.05);
+    s.onended = () => { s.disconnect(); f.disconnect(); g.disconnect(); };
+  }
+
+  playImpact(weapon = {}, killed = false) {
+    if (!this.ctx || this.muted || this.background) return;
+    const now = this.ctx.currentTime;
+    // Shotgun pellets and axe area hits share one transient instead of clipping.
+    if (now - this.lastImpact < 0.045) return;
+    this.lastImpact = now;
+    const weight = 1 + Math.min(10, weapon.level || 0) * 0.015;
+    const pitch = 0.94 + Math.random() * 0.12;
+    const kind = weapon.kind || 'bat';
+    this._noise(0.045, 0.42 * weight, 3200 * pitch, 900, 'bandpass');
+    this._tone((kind === 'axe' ? 135 : 190) * pitch, 45, 0.16, 'sine', 0.48 * weight);
+    this._noise(0.14, 0.32, 650, 110, 'lowpass', 0.015);
+    if (kind === 'axe') this._tone(1050 * pitch, 420, 0.12, 'triangle', 0.13, 0.008);
+    if (kind === 'whip') this._noise(0.035, 0.36, 5800, 2000, 'highpass');
+    if (['pistol', 'rifle', 'shotgun'].includes(kind)) this._noise(0.06, 0.25, 1800, 350);
+    if (killed) {
+      this._tone(85, 32, 0.22, 'sine', 0.4, 0.018);
+      this._noise(0.18, 0.19, 1300, 180, 'lowpass', 0.025);
+    }
   }
 
   play(name) {
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || this.muted || this.background) return;
     switch (name) {
       case 'jump': this._tone(260, 560, 0.14, 'square', 0.12); break;
       case 'land': this._noise(0.07, 0.18, 500, 150, 'lowpass'); break;
-      case 'swing': this._noise(0.14, 0.25, 1800, 500); break;
-      case 'whip': this._noise(0.1, 0.3, 4200, 1200, 'bandpass'); this._tone(900, 200, 0.08, 'sawtooth', 0.08); break;
-      case 'hit': this._noise(0.1, 0.35, 900, 200, 'lowpass'); this._tone(160, 60, 0.1, 'square', 0.15); break;
-      case 'pistol': this._noise(0.09, 0.4, 3000, 600); this._tone(380, 90, 0.1, 'square', 0.14); break;
-      case 'rifle': this._noise(0.06, 0.32, 3200, 800); this._tone(300, 100, 0.06, 'square', 0.1); break;
-      case 'shotgun': this._noise(0.22, 0.55, 2200, 200); this._tone(130, 40, 0.2, 'sawtooth', 0.22); break;
+      case 'swing': case 'swing-bat': this._noise(0.14, 0.27, 1400, 350); this._tone(210, 80, 0.1, 'triangle', 0.08); break;
+      case 'swing-axe': this._noise(0.2, 0.3, 2100, 280); this._tone(340, 90, 0.15, 'triangle', 0.12); break;
+      case 'whip': this._noise(0.08, 0.38, 6000, 1600, 'highpass'); this._tone(1200, 180, 0.055, 'triangle', 0.13); break;
+      case 'hit': this.playImpact(); break;
+      case 'pistol': this._noise(0.045, 0.55, 6500, 1400, 'highpass'); this._tone(260, 55, 0.14, 'sine', 0.45); this._noise(0.14, 0.25, 1300, 180, 'lowpass', 0.015); break;
+      case 'rifle': this._noise(0.032, 0.44, 5500, 1800, 'highpass'); this._tone(210, 65, 0.09, 'triangle', 0.3); this._noise(0.065, 0.2, 1600, 400, 'bandpass', 0.009); break;
+      case 'shotgun': this._noise(0.065, 0.65, 5000, 600, 'highpass'); this._tone(150, 32, 0.27, 'sine', 0.6); this._noise(0.25, 0.4, 1600, 90, 'lowpass', 0.025); this._tone(700, 210, 0.06, 'triangle', 0.1, 0.18); break;
       case 'reload': this._tone(500, 700, 0.05, 'square', 0.1); this._tone(700, 500, 0.05, 'square', 0.1, 0.18); break;
       case 'empty': this._tone(200, 150, 0.04, 'square', 0.1); break;
       case 'coin': this._tone(880, 880, 0.07, 'square', 0.1); this._tone(1320, 1320, 0.12, 'square', 0.1, 0.07); break;

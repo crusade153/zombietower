@@ -69,6 +69,18 @@ button:focus-visible { outline: 3px solid #f47893; outline-offset: 4px; }
 @keyframes pulse { to { opacity: .65; } }
 #hud-right { position: absolute; top: calc(var(--safe-t) + 22px); right: calc(var(--safe-r) + 24px); display: flex; gap: 9px; pointer-events: auto; }
 .mini-btn { display: grid; place-items: center; width: 42px; height: 42px; background: #25464bc9; border: 1px solid #ffffffa0; border-radius: 8px; }
+.lobby-tools { display: flex; align-items: center; gap: 10px; }
+.lobby-graphics { min-height: 38px; padding: 0 12px; border: 1px solid #8ebeb7; border-radius: 8px; background: #fffaf0e6; font-size: 12px; font-weight: 800; }
+#btn-graphics { position: absolute; top: 50px; right: 0; width: 96px; height: 34px; font-size: 12px; color: #fff; font-weight: 800; white-space: nowrap; }
+.graphics-options { display: flex; gap: 6px; margin: 8px 0 14px; padding: 4px; border-radius: 9px; background: #dceee9; }
+.graphics-choice { flex: 1; padding: 10px 8px; border: 0; border-radius: 6px; font-size: 13px; font-weight: 800; background: transparent; }
+.graphics-choice.selected { background: #fffaf0; box-shadow: 0 2px 4px #27655b22; }
+.audio-settings { margin-bottom: 16px; }
+.volume-control { display: flex; align-items: center; gap: 12px; margin: 8px 0; font-size: 13px; font-weight: 800; }
+.volume-control > span { width: 42px; }
+.volume-control input { flex: 1; min-width: 0; height: 32px; accent-color: #387a70; touch-action: auto; cursor: pointer; }
+.volume-control output { width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+.graphics-choice:focus-visible, .lobby-graphics:focus-visible, #btn-graphics:focus-visible { outline: 3px solid #ffcd43; outline-offset: 3px; }
 #vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .2s; background: radial-gradient(ellipse at center, transparent 45%, #ff435970); }
 #toast { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); max-width: min(80%, 480px); font-size: 22px; font-weight: 950; color: #fff; text-shadow: 0 2px 4px #1c444b; opacity: 0; transition: opacity .25s; white-space: pre-line; text-align: center; }
 #toast.show { opacity: 1; }
@@ -185,6 +197,9 @@ button:focus-visible { outline: 3px solid #f47893; outline-offset: 4px; }
   .lava-meter { font-size: 10px; }
   #hud-right { top: 13px; right: 12px; gap: 5px; }
   .mini-btn { width: 32px; height: 32px; }
+  #btn-graphics { top: 40px; width: 72px; height: 30px; font-size: 10px; }
+  .lobby-tools { gap: 6px; }
+  .lobby-graphics { font-size: 10px; padding: 0 8px; min-height: 32px; }
   .mini-btn .icon { width: 17px; height: 17px; }
   #coin-line { font-size: 15px; }
   #dpad { left: 15px; bottom: max(20px, var(--safe-b)); width: 126px; height: 126px; }

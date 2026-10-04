@@ -19,6 +19,9 @@ function freshSave() {
     openedChests: [], // 연 상자의 안전구역 번호
     best: 0,
     muted: false,
+    graphicsStyle: 'polished',
+    musicVolume: 0.35,
+    effectsVolume: 0.8,
     difficulty: 'normal',
     cleared: false,
   };
@@ -65,6 +68,11 @@ export function normalizeSave(raw) {
   s.resumeAtBoss = !!raw.resumeAtBoss && s.bossSanctuaryUnlocked;
   s.cleared = !!raw.cleared;
   s.muted = !!raw.muted;
+  s.graphicsStyle = raw.graphicsStyle === 'classic' ? 'classic' : 'polished';
+  for (const key of ['musicVolume', 'effectsVolume']) {
+    s[key] = typeof raw[key] === 'number' && Number.isFinite(raw[key])
+      ? Math.max(0, Math.min(1, raw[key])) : defaults[key];
+  }
   return s;
 }
 

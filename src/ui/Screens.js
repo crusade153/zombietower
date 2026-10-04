@@ -23,6 +23,13 @@ export class Screens {
       this.g.audio.play('ui');
       this.onAct(t.dataset.act, t.dataset);
     });
+    this.el.addEventListener('input', (e) => {
+      const channel = e.target.dataset.volume;
+      if (!channel) return;
+      const value = Number(e.target.value);
+      this.g.setAudioVolume(channel, value / 100);
+      this.el.querySelector(`[data-volume-label="${channel}"]`).textContent = `${value}%`;
+    });
   }
 
   get open() { return !this.el.classList.contains('hidden'); }
@@ -49,6 +56,10 @@ export class Screens {
       case 'start': this.hide(); g.startRun(true); break;
       case 'diff': g.setDifficulty(data.v); this.showTitle(); break;
       case 'title-mute': g.toggleMute(); this.showTitle(); break;
+      case 'graphics':
+        if (data.style) g.setGraphicsStyle(data.style); else g.toggleGraphicsStyle();
+        if (g.state === 'title') this.showTitle(); else this.showPause();
+        break;
       case 'close': this.hide(); g.closeModal(); break;
       case 'resume': this.hide(); g.resume(); break;
       case 'mute': g.toggleMute(); this.showPause(); break;
@@ -88,7 +99,7 @@ export class Screens {
     const progress = s.lastSafe > 0 || s.coins > 0 || s.weapons.length > 1;
     const diffBtn = (k, label) => `<button class="difficulty-btn ${s.difficulty === k ? 'selected' : ''}" data-act="diff" data-v="${k}" aria-pressed="${s.difficulty === k}">${label}</button>`;
     this._show(`
-      <div class="lobby-top"><span class="wordmark">${icon('bag')} ZOMBIE TOWER<span class="edition">ADVENTURE CLUB</span></span><button class="lobby-sound" data-act="title-mute" aria-label="${g.audio.muted ? '소리 켜기' : '소리 끄기'}" title="${g.audio.muted ? '소리 켜기' : '소리 끄기'}">${icon(g.audio.muted ? 'muted' : 'sound')}</button></div>
+      <div class="lobby-top"><span class="wordmark">${icon('bag')} ZOMBIE TOWER<span class="edition">ADVENTURE CLUB</span></span><div class="lobby-tools"><button class="lobby-graphics" data-act="graphics" aria-label="${s.graphicsStyle === 'classic' ? '현재 그래픽으로 변경' : '초기 블록 그래픽으로 변경'}" aria-pressed="${s.graphicsStyle === 'classic'}">그래픽 · ${s.graphicsStyle === 'classic' ? '블록' : '현재'}</button><button class="lobby-sound" data-act="title-mute" aria-label="${g.audio.muted ? '소리 켜기' : '소리 끄기'}" title="${g.audio.muted ? '소리 켜기' : '소리 끄기'}">${icon(g.audio.muted ? 'muted' : 'sound')}</button></div></div>
       <div class="lobby-menu">
         <div class="lobby-eyebrow"><span></span> FROZEN CITADEL · LAVA MONSTERS</div>
         <h1><span>좀비</span><br><strong>타워<span class="title-dot">!</span></strong></h1>
@@ -108,6 +119,15 @@ export class Screens {
     this._show(`
       <div class="panel">
         <h2>${icon('pause')} 잠깐 쉬어가기</h2>
+        <div class="graphics-options" role="group" aria-label="그래픽 스타일">
+          ${[['polished', '현재 그래픽'], ['classic', '초기 블록 그래픽']].map(([style, label]) => `<button class="graphics-choice ${g.save.graphicsStyle === style ? 'selected' : ''}" data-act="graphics" data-style="${style}" aria-pressed="${g.save.graphicsStyle === style}">${label}</button>`).join('')}
+        </div>
+        <div class="audio-settings">
+          ${[['music', 'BGM'], ['effects', '효과음']].map(([channel, label]) => {
+            const value = Math.round(g.audio[`${channel}Volume`] * 100);
+            return `<label class="volume-control"><span>${label}</span><input type="range" min="0" max="100" step="5" value="${value}" data-volume="${channel}" aria-label="${label} 볼륨"><output data-volume-label="${channel}">${value}%</output></label>`;
+          }).join('')}
+        </div>
         <div class="row" style="flex-direction:column;align-items:center">
           <button class="btn green" data-act="resume">${icon('play')} 계속하기</button>
           <button class="btn" data-act="floors">${icon('flag')} 클리어한 층에서 시작</button>

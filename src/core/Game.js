@@ -10,7 +10,7 @@ import { Effects } from '../world/Effects.js';
 import { updatePlatforms, preparePlatforms, stepOn, buildNearCache } from '../world/Platforms.js';
 import { updateHazards } from '../world/Hazards.js';
 import { themeForStage } from '../config/themes.js';
-import { makeHealPickup, makeWaterPickup, makeCoin, disposeWorld } from '../world/models.js';
+import { makeHealPickup, makeWaterPickup, makeCoin, disposeWorld, setModelStyle } from '../world/models.js';
 import { Player, groundYBelow } from '../entities/Player.js';
 import { Zombie } from '../entities/Zombie.js';
 import { moveAndCollide, rayBox } from './physics.js';
@@ -39,6 +39,8 @@ const MAX_WATER = 3;
 
 export class Game {
   constructor() {
+    this.save = loadSave();
+    setModelStyle(this.save.graphicsStyle);
     this.canvas = document.getElementById('game');
     const dpr = window.devicePixelRatio || 1;
     this.touchDevice = window.matchMedia('(pointer: coarse)').matches;
@@ -50,7 +52,7 @@ export class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.12;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.lobby = new Lobby();
     this._frameEma = 1 / 60;
@@ -67,12 +69,12 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(62, 1, 0.1, 1200);
     this.cam = new CameraRig(this.camera);
     this.input = new Input();
-    this.audio = new AudioSys();
+    this.audio = new AudioSys(this.save);
     this.fx = new Effects(this.scene);
     this.hud = new Hud(this);
     this.screens = new Screens(this);
-    this.save = loadSave();
     this.audio.muted = !!this.save.muted;
+    this.applyGraphicsLighting();
     setSoundIcon(this.hud.el.mute, this.audio.muted);
     this.difficulty = this._difficulty();
     this.state = 'title'; // title | play | dead | modal | paused | clear
@@ -92,7 +94,12 @@ export class Game {
     this.bindUi();
     this.resize();
     window.addEventListener('resize', () => this.resize());
-    document.addEventListener('visibilitychange', () => { if (document.hidden && this.state === 'play') this.pause(); });
+    document.addEventListener('visibilitychange', () => {
+      this.audio.setBackground(document.hidden);
+      if (document.hidden && this.state === 'play') this.pause();
+    });
+    window.addEventListener('pagehide', () => { this.audio.setBackground(true); this.flushSave(); });
+    window.addEventListener('pageshow', () => this.audio.setBackground(document.hidden));
     this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); if (this.state === 'play') this.pause(); });
 
     this.screens.showTitle();
@@ -122,6 +129,7 @@ export class Game {
     preparePlatforms(this.tower);
     this.world = new WorldView(this.scene, this.tower, { touchDevice: this.touchDevice });
     this.lava = new Lava(this.scene);
+    this.lava.setGraphicsStyle(this.save.graphicsStyle);
     this.near = buildNearCache(this.tower, this.lava.floor);
     this.player = new Player(this.scene);
 
@@ -201,6 +209,8 @@ export class Game {
   bindUi() {
     this.hud.el.pause.addEventListener('pointerdown', (e) => { e.preventDefault(); this.pause(); });
     this.hud.el.mute.addEventListener('pointerdown', (e) => { e.preventDefault(); this.toggleMute(); });
+    this.hud.el.graphics.addEventListener('click', () => this.toggleGraphicsStyle());
+    this.hud.setGraphicsStyle(this.save.graphicsStyle);
     // 첫 터치에서 오디오 해제
     // iOS는 touchend/click 같은 '제스처 종료' 이벤트에서만 오디오가 풀리는 경우가 있어 여러 이벤트에 건다
     const unlock = () => this.audio.unlock();
@@ -228,7 +238,10 @@ export class Game {
     this.audio.unlock();
     if (!cont) {
       const keep = this.save.muted;
+      const preferences = { graphicsStyle: this.save.graphicsStyle, musicVolume: this.save.musicVolume, effectsVolume: this.save.effectsVolume };
       this.save = newSave(keep);
+      Object.assign(this.save, preferences);
+      this.markDirty(true);
       this.difficulty = this._difficulty();
       this.buildWorld();
     } else if (this.stateWasTitleWithOldWorld) {
@@ -243,6 +256,7 @@ export class Game {
     }
     this.hud.show(true);
     this.state = 'play';
+    this.syncAudioState();
     this.refreshSlots();
     this.hud.setCoins(this.save.coins);
     if (this.save.lastSafe === 0 && !this.save.tip) {
@@ -272,6 +286,7 @@ export class Game {
   toTitle() {
     this.hud.show(false);
     this.state = 'title';
+    this.syncAudioState();
     this.input.clearAll();
     // 저장된 진행으로 월드 재구성(새로 시작 후 타이틀로 나온 경우 대비)
     this.buildWorld();
@@ -281,11 +296,12 @@ export class Game {
   pause() {
     if (this.state !== 'play') return;
     this.state = 'paused';
+    this.syncAudioState();
     this.input.clearAll();
     this.screens.showPause();
   }
 
-  resume() { if (this.state === 'paused') this.state = 'play'; }
+  resume() { if (this.state === 'paused') { this.state = 'play'; this.syncAudioState(); } }
 
   restartFromFloor(k, bossPrep = false) {
     if (!['title', 'paused'].includes(this.state) || !Number.isInteger(k) || k < 0 || k > this.save.lastSafe) return false;
@@ -304,10 +320,64 @@ export class Game {
   }
 
   toggleMute() {
+    this.audio.unlock();
     this.audio.setMuted(!this.audio.muted);
     this.save.muted = this.audio.muted;
     setSoundIcon(this.hud.el.mute, this.audio.muted);
-    this.markDirty();
+    this.markDirty(true);
+  }
+
+  syncAudioState() { this.audio.setPlaying(['play', 'dead', 'modal'].includes(this.state)); }
+
+  setAudioVolume(channel, volume) {
+    this.audio.unlock();
+    this.audio.setVolume(channel, volume);
+    this.save[`${channel}Volume`] = this.audio[`${channel}Volume`];
+    this.markDirty(true);
+  }
+
+  applyGraphicsLighting() {
+    const classic = this.save.graphicsStyle === 'classic';
+    this.renderer.shadowMap.enabled = !classic;
+    this.renderer.toneMappingExposure = classic ? 0.9 : 1.12;
+    this.scene.environment = this.lobby.scene.environment = classic ? null : this.environment.texture;
+  }
+
+  toggleGraphicsStyle() {
+    this.setGraphicsStyle(this.save.graphicsStyle === 'classic' ? 'polished' : 'classic');
+  }
+
+  setGraphicsStyle(style) {
+    if (!['polished', 'classic'].includes(style) || style === this.save.graphicsStyle) return;
+    this.save.graphicsStyle = style;
+    setModelStyle(style);
+    // Rebuild only render objects. Platform state, enemies, inventory and camera survive.
+    this.world.dispose();
+    this.world = new WorldView(this.scene, this.tower, { touchDevice: this.touchDevice });
+    this.world.setActiveStage(this.bandStage);
+    for (const k of this.save.openedChests) this.world.setChestOpened(k, true);
+    this.player.setGraphicsStyle();
+    for (const z of this.zombies) if (!z.removed) z.setGraphicsStyle();
+    for (const pickup of this.pickups) {
+      const next = ['coin', 'aircoin'].includes(pickup.type) ? makeCoin()
+        : pickup.type === 'water' ? makeWaterPickup() : makeHealPickup();
+      next.position.copy(pickup.mesh.position);
+      next.rotation.copy(pickup.mesh.rotation);
+      next.visible = pickup.mesh.visible;
+      pickup.mesh.removeFromParent();
+      disposeWorld(pickup.mesh);
+      pickup.mesh = next;
+      this.scene.add(next);
+    }
+    this.lava.setGraphicsStyle(style);
+    disposeWorld(this.lobby.scene);
+    this.lobby = new Lobby();
+    this.lobby.resize(window.innerWidth, window.innerHeight);
+    this.lobby.scene.environmentIntensity = 0.65;
+    this.applyGraphicsLighting();
+    this.hud.setGraphicsStyle(style);
+    this.markDirty(true);
+    this.hud.toast(style === 'classic' ? '초기 블록 그래픽' : '현재 그래픽', 1100);
   }
 
   setDifficulty(v) {
@@ -336,6 +406,7 @@ export class Game {
     const dt = Math.min(0.1, now - (this.lastNow || now));
     this.lastNow = now;
     this.nowSec = now;
+    this.syncAudioState();
 
     if (!this.manualStep && (this.state === 'play' || this.state === 'dead')) {
       this.acc += dt;
@@ -661,7 +732,7 @@ export class Game {
       this.cd = d.interval;
       P.startSwing(Math.max(0.3, d.windup / 0.35), d.shape === 'line' ? 'line' : 'melee');
       this.pending = { t: d.windup, w, yaw: P.facing };
-      this.audio.play(d.shape === 'line' ? 'whip' : 'swing');
+      this.audio.play(d.shape === 'line' ? 'whip' : `swing-${w.kind}`);
     } else {
       const t = this.findTarget(Math.min(d.range, 24), 45, 7);
       if (t) P.faceDir(t.body.x - b.x, t.body.z - b.z, 0.3);
@@ -779,7 +850,7 @@ export class Game {
     const killed = z.takeDamage(this, dmg, o);
     this.hud.floater({ x: zb.x, y: zb.y + z.def.height + 0.3, z: zb.z }, Math.round(dmg), killed ? '#ffd04a' : '#fff', killed ? 1.3 : 1);
     this.fx.burst(zb.x, zb.y + z.def.height * 0.6, zb.z, 0x6fa05a, 4, 3.5, 0.35, 0.12);
-    this.audio.play('hit');
+    this.audio.playImpact(o.weapon || this.currentWeapon, killed);
   }
 
   onZombieKilled(z, o) {

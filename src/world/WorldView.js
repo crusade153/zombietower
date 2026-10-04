@@ -4,7 +4,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { TOWER } from '../config/balance.js';
 import { THEMES, themeIndexForStage, themeForStage } from '../config/themes.js';
 import {
-  makeChest, makeForge, makeWaterStation, makeFlag, lambert, metal, box, cyl, rounded, batchMeshes,
+  makeChest, makeForge, makeWaterStation, makeFlag, lambert, metal, box, cyl, rounded, batchMeshes, getModelStyle, disposeWorld,
 } from './models.js';
 import { makeWallTextures } from './WallTextures.js';
 import { blinkState } from './Platforms.js';
@@ -36,7 +36,9 @@ function typeColor(p, theme, stage) {
 }
 
 function colorBox(p, color, atBase) {
-  const g = new RoundedBoxGeometry(p.hx * 2, p.hy * 2, p.hz * 2, 1, Math.min(0.16, p.hy * 0.5));
+  const g = getModelStyle() === 'classic'
+    ? new THREE.BoxGeometry(p.hx * 2, p.hy * 2, p.hz * 2).toNonIndexed()
+    : new RoundedBoxGeometry(p.hx * 2, p.hy * 2, p.hz * 2, 1, Math.min(0.16, p.hy * 0.5));
   const normal = g.attributes.normal;
   const pos = g.attributes.position;
   const top = color.clone().lerp(new THREE.Color(0xf4fff5), p.type === 'safe' ? 0.5 : 0.06);
@@ -101,6 +103,7 @@ export class WorldView {
     this.scene = scene;
     this.tower = tower;
     this.touchDevice = touchDevice;
+    this.classic = getModelStyle() === 'classic';
     this.stageGroups = [];
     this.dynamic = []; // {mesh, p}
     this.safeProps = [];
@@ -112,7 +115,17 @@ export class WorldView {
     this.crystals = [];
     this.theme = 0;
     this._lastTime = 0;
+    const existing = new Set(scene.children);
     this._build();
+    // Own the render nodes separately so a style swap leaves the tower physics intact.
+    this.root = new THREE.Group();
+    for (const child of [...scene.children]) if (!existing.has(child)) this.root.add(child);
+    scene.add(this.root);
+  }
+
+  dispose() {
+    this.root.removeFromParent();
+    disposeWorld(this.root);
   }
 
   _build() {
@@ -129,7 +142,7 @@ export class WorldView {
     sun.position.set(-30, 80, 20);
     scene.add(sun);
     this.sun = sun;
-    sun.castShadow = true;
+    sun.castShadow = !this.classic;
     sun.shadow.mapSize.set(this.touchDevice ? 1024 : 2048, this.touchDevice ? 1024 : 2048);
     Object.assign(sun.shadow.camera, { left: -18, right: 18, top: 18, bottom: -18, near: 1, far: 90 });
     sun.shadow.normalBias = 0.08;
@@ -196,7 +209,9 @@ export class WorldView {
 
     this._buildShell(topY);
 
-    const solidMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.12 });
+    const solidMat = this.classic
+      ? new THREE.MeshLambertMaterial({ vertexColors: true })
+      : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.12 });
     const lineMat = new THREE.LineBasicMaterial({ color: 0xeafff3, transparent: true, opacity: 0.35 });
     const chevron = makeChevronTexture();
     const torchMat = new THREE.MeshBasicMaterial({ color: 0xffb040 });
@@ -328,6 +343,7 @@ export class WorldView {
 
   _platformDetail(p) {
     const g = new THREE.Group();
+    if (this.classic) return g;
     const rim = metal(0x506b7b, 0.45);
     const light = lambert(p.type === 'checkpoint' ? 0x78ffc5 : 0xb9f4f1, 0x183d40);
     const y = p.hy + 0.012;
@@ -349,6 +365,10 @@ export class WorldView {
     const texCache = [];
     const getMat = (idx) => {
       if (!texCache[idx]) {
+        if (this.classic) {
+          texCache[idx] = new THREE.MeshLambertMaterial({ color: THEMES[idx].wall, side: THREE.BackSide });
+          return texCache[idx];
+        }
         const { map, glow } = makeWallTextures(idx);
         texCache[idx] = new THREE.MeshStandardMaterial({
           map, bumpMap: map, bumpScale: 0.18, emissiveMap: glow, emissive: 0xffffff, emissiveIntensity: 0.22, side: THREE.BackSide, roughness: 0.36, metalness: 0.16,
@@ -381,10 +401,10 @@ export class WorldView {
         pil.setMatrixAt(i, m);
       }
       this.stageGroups[s].add(pil);
-      this._buildArchitecture(s, theme);
+      if (!this.classic) this._buildArchitecture(s, theme);
 
       // Cloth banners break up the stone silhouette and carry each floor's colors.
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < (this.classic ? 0 : 8); i++) {
         const a = i * Math.PI / 4 + 0.15;
         const banner = new THREE.Group();
         banner.position.set(Math.sin(a) * (WALL_R - 2.4), tower.safeZones[s - 1].maxY + 4.5, Math.cos(a) * (WALL_R - 2.4));
