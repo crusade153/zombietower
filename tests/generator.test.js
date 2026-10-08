@@ -52,11 +52,14 @@ describe('타워 생성기', () => {
     expect(a.platforms[40].x).toBeCloseTo(b.platforms[40].x, 6);
   });
 
-  it('보스는 5, 10층에만 있다', () => {
+  it('보스 경기장은 3·5·7·10층, 나머지 2층 이상에는 우두머리가 하나씩', () => {
     const t = generateTower(3);
+    const bosses = { 3: 'magmaGiant', 5: 'boss', 7: 'plagueQueen', 10: 'finalBoss' };
     t.stages.forEach((st) => {
-      const has = st.zombies.some((z) => z.type === 'boss' || z.type === 'finalBoss');
-      expect(has).toBe(st.index === 5 || st.index === 10);
+      const types = st.zombies.map((z) => z.type);
+      for (const [s, type] of Object.entries(bosses)) expect(types.includes(type)).toBe(st.index === Number(s));
+      expect(types.filter((x) => x === 'captain').length).toBe(st.index >= 2 && !bosses[st.index] ? 1 : 0);
+      expect(st.boss).toBe(!!bosses[st.index]);
     });
   });
 

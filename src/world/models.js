@@ -183,7 +183,7 @@ function makePolishedHumanoid({
   } else {
     const fire = mk(0xffa333, 0xff5a16);
     const rock = mk(0x2a2335);
-    const heavy = ['tank', 'boss', 'brute', 'warlock', 'finalBoss'].includes(variant);
+    const heavy = ['tank', 'boss', 'brute', 'warlock', 'finalBoss', 'captain', 'magmaGiant', 'plagueQueen', 'splitter'].includes(variant);
     // Volcanic horns, obsidian plates, and molten cracks replace the friendly zombie look.
     for (const side of [-1, 1]) {
       const horn = new THREE.Mesh(new THREE.ConeGeometry(heavy ? 0.13 : 0.085, heavy ? 0.6 : 0.3, 7), rock);
@@ -215,10 +215,10 @@ function makePolishedHumanoid({
     head.add(rounded(0.24, 0.1, 0.38, mats.hair, -0.16, 0.33, -0.03));
     for (const side of [-1, 1]) head.add(cyl(0.07, 0.12, white, side * 0.37, -0.17, -0.1));
     torso.add(rounded(0.12, 0.12, 0.025, yellow, -0.18, 0.08, 0.225));
-    if (variant === 'runner') {
+    if (variant === 'runner' || variant === 'leaper' || variant === 'mini') {
       head.add(rounded(0.8, 0.07, 0.7, pink, 0, 0.19, 0));
-    } else if (variant === 'tank' || variant === 'boss' || variant === 'finalBoss' || variant === 'brute') {
-      head.add(rounded(0.83, 0.17, 0.72, variant === 'boss' ? yellow : teal, 0, 0.32, 0));
+    } else if (['tank', 'boss', 'finalBoss', 'brute', 'captain', 'magmaGiant'].includes(variant)) {
+      head.add(rounded(0.83, 0.17, 0.72, variant === 'boss' || variant === 'captain' ? yellow : teal, 0, 0.32, 0));
       for (const side of [-1, 0, 1]) head.add(rounded(0.14, 0.2, 0.15, yellow, side * 0.25, 0.45, 0));
     } else if (variant === 'spitter') {
       torso.add(sphere(0.2, 0.22, 0.14, pink, 0, 0.01, 0.21));

@@ -1,7 +1,7 @@
 import { TOWER, ECON } from '../config/balance.js';
 import { makeRng } from '../core/rng.js';
 import { maxReach, maxJumpHeight, setBounds, aabbDistXZ, extremes } from '../core/physics.js';
-import { zombieWeights, goldenChance } from '../config/zombies.js';
+import { zombieWeights, goldenChance, BOSS_BY_STAGE, captainStage } from '../config/zombies.js';
 import { themeForStage } from '../config/themes.js';
 
 const MIN_GAP = 0.45; // 발판 사이 최소 간격(너무 붙으면 점프가 아니라 걷기)
@@ -129,7 +129,7 @@ function pickTypeWeights(s, d) {
   };
 }
 
-export function bossStage(s) { return s === 5 || s === 10; }
+export function bossStage(s) { return !!BOSS_BY_STAGE[s]; }
 
 /**
  * 타워 전체 생성. 안전구역 0(시작)~10(꼭대기)과 스테이지 1~10.
@@ -331,10 +331,25 @@ function populateStage(stage, rng) {
   const s = stage.index;
   const plats = stage.platforms;
   const eligible = plats.filter((p, i) => i >= 3 && !p.motion && !['falling', 'beam', 'arena', 'sanctuary'].includes(p.type) && Math.min(p.hx, p.hz) >= 1.6);
-  const want = Math.round(6 + 2 * s);
+  const want = Math.round(8 + 2.4 * s);
   const w = zombieWeights(s);
   const pool = eligible.slice();
-  for (let n = 0; n < want && pool.length; n++) {
+  // 우두머리: 뒤쪽 절반의 가장 넓은 발판
+  if (captainStage(s) && pool.length) {
+    const half = pool.filter((p) => plats.indexOf(p) >= plats.length / 2);
+    const cand = (half.length ? half : pool).reduce((a, p) => (p.hx * p.hz > a.hx * a.hz ? p : a));
+    pool.splice(pool.indexOf(cand), 1);
+    stage.zombies.push({ type: 'captain', platform: cand, x: cand.x, y: cand.maxY, z: cand.z, boss: true });
+  }
+  let refilled = false;
+  for (let n = 0; n < want; n++) {
+    if (!pool.length) {
+      // 발판이 모자라면 한 번 더 돌며 넓은 발판에 두 마리째를 둔다
+      if (refilled) break;
+      refilled = true;
+      pool.push(...eligible.filter((p) => Math.min(p.hx, p.hz) >= 2 && !stage.zombies.some((z) => z.platform === p && z.type === 'captain')));
+      if (!pool.length) break;
+    }
     const idx = rng.int(0, pool.length - 1);
     const p = pool.splice(idx, 1)[0];
     const type = rng.weighted(w);
@@ -357,7 +372,7 @@ function populateStage(stage, rng) {
   }
   if (stage.boss) {
     const arena = plats[plats.length - 1];
-    stage.zombies.push({ type: s === 10 ? 'finalBoss' : 'boss', platform: arena, x: arena.x, y: arena.maxY, z: arena.z, boss: true });
+    stage.zombies.push({ type: BOSS_BY_STAGE[s], platform: arena, x: arena.x, y: arena.maxY, z: arena.z, boss: true });
     for (let k = 0; k < 5; k++) {
       stage.zombies.push({
         type: rng.weighted(w), platform: arena,

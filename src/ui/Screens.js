@@ -5,6 +5,7 @@ import {
 } from '../combat/Weapons.js';
 import { weaponByUid, normalizeSave, writeSave } from '../core/Save.js';
 import { formatTime, starCount } from '../core/StageRun.js';
+import { bossStage } from '../world/TowerGenerator.js';
 import { icon } from './icons.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -187,7 +188,7 @@ export class Screens {
     this.chestStage = stage;
     this.mode = 'chest';
     const odds = chestOdds(stage);
-    if (stage === 5 || stage === 10) {
+    if (bossStage(stage)) {
       for (let i = 0; i < 3; i++) { odds[3] += odds[i]; odds[i] = 0; }
     }
     const tot = odds.reduce((a, b) => a + b, 0);
@@ -195,7 +196,7 @@ export class Screens {
       <div class="panel" style="min-width:min(80vw,640px)">
         <h2>📦 ${stage}층 보물상자</h2>
         <div class="chest-stage"><div class="beam" id="chest-beam"></div><div class="chest-ico" id="chest-ico">🎁</div></div>
-        <p class="hint">${RARITY.map((r, i) => `<span style="color:${r.color}">${r.name} ${Math.round((odds[i] / tot) * 100)}%</span>`).join(' · ')}${stage === 5 || stage === 10 ? ' · 보스층: 신화 이상 확정' : ''}</p>
+        <p class="hint">${RARITY.map((r, i) => `<span style="color:${r.color}">${r.name} ${Math.round((odds[i] / tot) * 100)}%</span>`).join(' · ')}${bossStage(stage) ? ' · 보스층: 신화 이상 확정' : ''}</p>
         <div id="chest-result"></div>
         <div class="row"><button class="btn green" data-act="chest-open" id="chest-btn">열기!</button></div>
       </div>`);

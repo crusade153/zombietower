@@ -3,7 +3,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { PHYS, LAVA, TOWER, PLAYER, ECON, THRILL, STARS, CHARGE, ABILITIES } from '../config/balance.js';
 import { WEAPONS, RARITY } from '../config/weapons.js';
 import { ZOMBIES, zombieWeights } from '../config/zombies.js';
-import { generateTower } from '../world/TowerGenerator.js';
+import { generateTower, bossStage } from '../world/TowerGenerator.js';
 import { WorldView } from '../world/WorldView.js';
 import { Lava } from '../world/Lava.js';
 import { Effects } from '../world/Effects.js';
@@ -1021,6 +1021,71 @@ export class Game {
     }
   }
 
+  onBossSpotted(z) {
+    this.hud.toast(z.def.captain ? `⚠️ ${z.def.name} 등장!` : `⚠️ 보스 · ${z.def.name}!`, 1800);
+    this.audio.play('warn');
+  }
+
+  /** 좀비 하나를 지정 위치에 만들어 바로 플레이어를 쫓게 한다 */
+  spawnZombieAt(type, src, x, z) {
+    const sb = src.body;
+    const nz = new Zombie(this, type, src.stage, { x, y: sb.y + 0.2, z, platform: sb.ground || src.home });
+    nz.stageIdx = src.stageIdx;
+    nz.alerted = true;
+    this.zombies.push(nz);
+    return nz;
+  }
+
+  /** 분열 망자가 쓰러지면 꼬마 망자로 갈라진다 */
+  spawnSplit(src) {
+    const s = src.def.split;
+    const b = src.body;
+    for (let i = 0; i < s.count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const m = this.spawnZombieAt(s.type, src, b.x + Math.cos(a) * 0.4, b.z + Math.sin(a) * 0.4);
+      m.kn.x = Math.cos(a) * 4;
+      m.kn.z = Math.sin(a) * 4;
+      m.body.vy = 5;
+    }
+    this.fx.burst(b.x, b.y + 1, b.z, 0x9fbf5a, 12, 4, 0.5, 0.12);
+  }
+
+  /** 역병 여왕의 졸개 소환 */
+  spawnMinions(src) {
+    const s = src.def.summon;
+    const alive = this.zombies.filter((z) => z.summoner === src && !z.dead).length;
+    const n = Math.min(s.count, s.max - alive);
+    if (n <= 0) return;
+    const b = src.body;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random();
+      const m = this.spawnZombieAt(s.type, src, b.x + Math.cos(a) * 2.2, b.z + Math.sin(a) * 2.2);
+      m.summoner = src;
+      this.fx.burst(m.body.x, m.body.y + 0.5, m.body.z, 0xb98aff, 8, 3, 0.5, 0.1);
+    }
+    this.fx.ring(b.x, b.y + 0.05, b.z, 3, 0xb98aff, 0.6, true);
+    this.audio.play('zgrowl');
+  }
+
+  /** 주술 망자: 주변 좀비 회복(보스 제외) */
+  healZombies(src) {
+    const h = src.def.heal;
+    const b = src.body;
+    let any = false;
+    for (const z of this.zombies) {
+      if (z.dead || z.removed || z.def.boss || z.hp >= z.maxHp) continue;
+      const zb = z.body;
+      if (Math.hypot(zb.x - b.x, zb.z - b.z) > h.radius || Math.abs(zb.y - b.y) > 3) continue;
+      const amt = Math.min(z.maxHp - z.hp, z.maxHp * h.pct);
+      z.hp += amt;
+      any = true;
+      this.hud.floater({ x: zb.x, y: zb.y + z.def.height + 0.3, z: zb.z }, `+${Math.round(amt)}`, '#7dff9a', 0.9);
+    }
+    if (!any) return;
+    this.fx.ring(b.x, b.y + 0.05, b.z, h.radius, 0x7dff9a, 0.5, true);
+    this.fx.burst(b.x, b.y + 2, b.z, 0x8dffb0, 8, 2.5, 0.5, 0.1);
+  }
+
   onGoldenSpotted() {
     this.hud.toast('💰 황금 망자 발견! 도망가기 전에 잡아라', 1800);
     this.audio.play('gold');
@@ -1102,7 +1167,7 @@ export class Game {
     }
     this.fx.burst(zb.x, zb.y + 1, zb.z, 0xff7a32, 10, 5, 0.5);
     if (z.def.boss && !z.def.finalBoss) {
-      this.hud.toast('👑 보스 처치!', 2000);
+      this.hud.toast(z.def.captain ? `👑 ${z.def.name} 처치!` : `👑 보스 처치! ${z.def.name}`, 2000);
       this.cam.shake = 1;
     }
   }
@@ -1281,8 +1346,8 @@ export class Game {
     this.climberT -= dt;
     if (this.climberT > 0) return;
     const stage = this.bandStage;
-    this.climberT = Math.max(10, 28 - 1.8 * stage);
-    if (this.zombies.filter((z) => z.climber && !z.dead).length >= 8) return;
+    this.climberT = Math.max(9, 26 - 1.7 * stage);
+    if (this.zombies.filter((z) => z.climber && !z.dead).length >= 10) return;
     const b = this.player.body;
     // 용암선 바로 위의 발판에서 출발
     const chain = this.tower.chain;
@@ -1294,7 +1359,7 @@ export class Game {
     if (!spawn) return;
     const n = 1 + Math.floor(stage / 2);
     const w = zombieWeights(stage);
-    delete w.spitter; delete w.tank;
+    delete w.spitter; delete w.tank; delete w.shaman;
     const rng = makeRng((Math.random() * 1e9) | 0);
     for (let i = 0; i < n; i++) {
       const type = rng.weighted(w);
@@ -1361,7 +1426,7 @@ export class Game {
   }
 
   rollChest(k) {
-    const boss = k === 5 || k === 10;
+    const boss = bossStage(k);
     const weapon = rollWeapon(k, Math.random, boss);
     this.save.openedChests.push(k);
     let sold = 0;
@@ -1465,8 +1530,10 @@ export class Game {
 
     // HUD
     this.hud.setHp(P.hp, P.maxHp);
-    const finalBoss = this.finalBattle ? this.zombies.find((z) => z.def.finalBoss && !z.dead) : null;
-    this.hud.setBoss(finalBoss);
+    const boss = this.finalBattle
+      ? this.zombies.find((z) => z.def.finalBoss && !z.dead)
+      : this.zombies.find((z) => z.def.boss && !z.def.finalBoss && !z.dead && z.alerted && Math.abs(z.stageIdx - this.bandStage) <= 1);
+    this.hud.setBoss(boss || null);
     const gap = b.y - this.lava.y;
     this.hud.setLava(gap, this.lava.state, LAVA.warnGap);
     this.hud.setVignette(this.vig || 0);

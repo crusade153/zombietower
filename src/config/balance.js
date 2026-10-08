@@ -63,7 +63,7 @@ export const ECON = {
   upgradeGrowth: 1.35, // 일반 +10까지 약 2,200 · 무적 약 4,400코인
   upgradeDmgPerLevel: 0.12,
   maxLevel: 10,
-  zombieRewardMult: 1,
+  zombieRewardMult: 0.75, // 몬스터가 많아진 만큼 1마리당 코인은 낮춘다
   airCoinRewardMult: 2,
   floorReward: (floor) => 40 + floor * 20,
   sellValue: [15, 35, 70, 120, 180, 260, 380], // 중복 무기 판매가(등급별)

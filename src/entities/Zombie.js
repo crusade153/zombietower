@@ -42,6 +42,10 @@ export class Zombie {
     this.phase = 1;
     this.exploded = false; // 폭탄 망자
     this.spotted = false; this.fleeT = 0; // 황금 망자
+    this.leapCd = 1.5;
+    this.healT = d.heal ? d.heal.every : 0;
+    this.summonT = d.summon ? d.summon.every * 0.5 : 0;
+    this.summoner = null; // 소환한 보스
 
     const h = makeHumanoid({
       skin: d.colors.skin, shirt: d.colors.shirt, pants: d.colors.pants, scale: d.scale, zombie: true, ownMaterials: true, variant: type,
@@ -85,7 +89,7 @@ export class Zombie {
   addGear() {
     const d = this.def;
     this.spark = null;
-    if (!d.bomber && !d.shield && !d.flee) return;
+    if (!d.bomber && !d.shield && !d.flee && !d.heal && !d.summon) return;
     const mat = (color, emissive = 0, metalness = 0) => {
       const m = new THREE.MeshStandardMaterial({ color, emissive, roughness: 0.45, metalness });
       m.userData.baseEmissive = m.emissive.clone();
@@ -108,6 +112,12 @@ export class Zombie {
     if (d.shield) {
       add(t, new THREE.BoxGeometry(0.98, 1.08, 0.1), mat(0x9fb4c8, 0x0c1420, 0.6), 0, -0.12, 0.46);
       add(t, new THREE.BoxGeometry(0.26, 0.26, 0.06), mat(0xffd854, 0x302000, 0.4), 0, 0, 0.53);
+    }
+    if (d.heal) {
+      add(this.parts.head, new THREE.SphereGeometry(0.16, 12, 10), mat(0x8dffb0, 0x2fbf60), 0, 0.72, 0);
+    }
+    if (d.summon) {
+      add(this.parts.head, new THREE.CylinderGeometry(0.3, 0.24, 0.2, 6), mat(0xb98aff, 0x4a1a80, 0.6), 0, 0.45, 0);
     }
     if (d.flee) {
       for (const m of this.h.materials) {
@@ -153,6 +163,7 @@ export class Zombie {
     g.audio.play('zdie');
     if (!o.silent) g.onZombieKilled(this, o);
     if (this.def.bomber && !this.exploded && !o.silent) g.explode(this, false);
+    if (this.def.split && !o.silent) g.spawnSplit(this);
   }
 
   resetForBattle() {
@@ -217,6 +228,13 @@ export class Zombie {
     if (!this.def.flee && !this.alerted && playerOk && dist < 14 && Math.abs(dy) < 6) {
       this.alerted = true;
       g.audio.play('zgrowl');
+      if (this.def.boss && !this.def.finalBoss && !this.announced) { this.announced = true; g.onBossSpotted(this); }
+    }
+    this.leapCd = Math.max(0, this.leapCd - dt);
+    if (this.alerted && playerOk) {
+      // 지원형: 주술 망자 회복, 역병 여왕 소환
+      if (this.def.heal && (this.healT -= dt) <= 0) { this.healT = this.def.heal.every; g.healZombies(this); }
+      if (this.def.summon && (this.summonT -= dt) <= 0) { this.summonT = this.def.summon.every; g.spawnMinions(this); }
     }
     if (this.alerted && (!playerOk || (!this.climber && dist > 28))) this.alerted = this.climber && playerOk;
 
@@ -236,7 +254,7 @@ export class Zombie {
       if (this.timer <= 0) this.state = this.alerted ? 'chase' : 'idle';
     } else if (this.alerted && playerOk) {
       this.state = 'chase';
-      const reach = this.def.finalBoss ? 13 : this.def.ranged ? Math.min(this.def.attackRange, 11) : this.def.attackRange;
+      const reach = (this.def.finalBoss || this.def.volley) ? 13 : this.def.ranged ? Math.min(this.def.attackRange, 11) : this.def.attackRange;
       const canAttack = dist <= reach && Math.abs(dy) < (this.def.ranged ? 4 : 1.7);
       if (canAttack && b.grounded) {
         this.state = 'windup';
@@ -255,11 +273,14 @@ export class Zombie {
             g.audio.play('warn');
           }
         }
-        if (this.def.finalBoss) {
+        if (this.def.finalBoss || this.def.volley) {
           this.attackKind = dist > 5.8 ? 'volley' : 'slam';
           this.timer = this.def.windup / (this.phase === 2 ? 1.15 : 1);
           g.fx.ring(b.x, b.y + 0.03, b.z, this.attackKind === 'slam' ? 5.8 : 2, 0xff593d, this.timer, true);
         }
+      } else if (this.def.leap && !this.climber && b.grounded && this.leapCd <= 0
+        && dist > this.def.leap.min && dist < this.def.leap.max && Math.abs(dy) < 3) {
+        this.leapAt(g, dx, dz, dist, dy);
       } else if (!this.climber || this.sameBand(P)) {
         const l = dist || 1;
         wantX = (dx / l) * speed;
@@ -307,6 +328,20 @@ export class Zombie {
 
     this.growlT -= dt;
     if (this.growlT <= 0 && this.alerted && dist < 18) { g.audio.play('zgrowl'); this.growlT = 4 + Math.random() * 5; }
+  }
+
+  /** 도약 망자: 플레이어 바로 앞에 떨어지도록 포물선 도약 */
+  leapAt(g, dx, dz, dist, dy) {
+    const b = this.body;
+    const t = Math.max(0.4, Math.min(0.75, dist / 10));
+    const k = Math.max(0, dist - 1.2) / dist;
+    b.vy = Math.min(14, dy / t + 0.5 * PHYS.gravity * t);
+    this.air = { vx: (dx * k) / t, vz: (dz * k) / t };
+    b.grounded = false;
+    this.leapCd = this.def.leap.cooldown;
+    this.facing = Math.atan2(dx, dz);
+    g.audio.play('zgrowl');
+    g.fx.burst(b.x, b.y + 0.1, b.z, 0xc9b8a8, 6, 2.5, 0.35, 0.1);
   }
 
   /** 황금 망자: 들키면 플레이어 반대쪽으로 도망. 발판 끝이면 옆으로 비켜 간다 */

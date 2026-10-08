@@ -84,7 +84,10 @@ export class Hud {
     if (!boss) return;
     this.bossEl.querySelector('b').textContent = boss.def.name;
     this.bossEl.querySelector('span').style.width = `${Math.max(0, boss.hp / boss.maxHp * 100)}%`;
-    this.bossEl.querySelector('small').textContent = `${Math.ceil(boss.hp).toLocaleString()} / ${Math.ceil(boss.maxHp).toLocaleString()} · ${boss.phase === 2 ? '2단계 · 폭주' : '1단계'} · 불길은 점프로 회피`;
+    const hp = `${Math.ceil(boss.hp).toLocaleString()} / ${Math.ceil(boss.maxHp).toLocaleString()}`;
+    const tip = boss.def.finalBoss ? ` · ${boss.phase === 2 ? '2단계 · 폭주' : '1단계'} · 불길은 점프로 회피`
+      : boss.def.summon ? ' · 졸개를 소환한다' : ' · 붉은 원 = 내려찍기, 점프로 피하기';
+    this.bossEl.querySelector('small').textContent = hp + tip;
   }
 
   /** gap: 플레이어와 용암 높이차(m). mode: 'idle' | 'rising' | 'frozen' */
