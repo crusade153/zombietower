@@ -1,6 +1,9 @@
 // localStorage 저장 (사파리 비공개 모드 등에서 실패해도 게임은 동작)
 import { WEAPON_KINDS } from '../config/weapons.js';
 import { ABILITY_IDS, ITEMS, ITEM_IDS, ECON } from '../config/balance.js';
+import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from '../config/achievements.js';
+import { COSMETICS, COSMETIC_KINDS, defaultCosmetics } from '../config/cosmetics.js';
+import { freshRecord, RECORD_KEYS, BOSS_TYPES } from './Achievements.js';
 const KEY = 'zombie-tower-save-v1';
 
 function freshSave() {
@@ -24,6 +27,10 @@ function freshSave() {
     abilities: { doubleJump: false, dash: false }, // 해금한 이동 능력
     items: { spring: 0, cloak: 0, potion: 0, magnet: 0 }, // 소모 아이템 보유 수
     stickMode: 'float', // 이동 패드: float = 터치한 곳에 생김, fixed = 고정 위치
+    record: freshRecord(), // 누적 기록(업적·통계)
+    achievements: [], // 달성한 업적 id
+    title: '', // 장착한 칭호
+    cosmetics: defaultCosmetics(), // 꾸미기 보유·장착
     best: 0,
     muted: false,
     graphicsStyle: 'polished',
@@ -87,6 +94,18 @@ export function normalizeSave(raw) {
   s.muted = !!raw.muted;
   s.graphicsStyle = raw.graphicsStyle === 'classic' ? 'classic' : 'polished';
   s.stickMode = raw.stickMode === 'fixed' ? 'fixed' : 'float';
+  s.record = freshRecord();
+  for (const k of RECORD_KEYS) s.record[k] = Math.max(0, integer(raw.record?.[k]));
+  s.record.bossTypes = [...new Set((Array.isArray(raw.record?.bossTypes) ? raw.record.bossTypes : []).filter((t) => BOSS_TYPES.includes(t)))];
+  s.achievements = [...new Set((Array.isArray(raw.achievements) ? raw.achievements : []).filter((id) => ACHIEVEMENT_IDS.includes(id)))];
+  const titles = ACHIEVEMENTS.filter((a) => a.title && s.achievements.includes(a.id)).map((a) => a.title);
+  s.title = titles.includes(raw.title) ? raw.title : '';
+  const cos = defaultCosmetics();
+  const valid = new Set(COSMETIC_KINDS.flatMap((k) => COSMETICS[k].list.map((c) => `${k}:${c.id}`)));
+  const owned = new Set([...cos.owned, ...(Array.isArray(raw.cosmetics?.owned) ? raw.cosmetics.owned : []).filter((x) => valid.has(x))]);
+  cos.owned = [...owned];
+  for (const k of COSMETIC_KINDS) if (owned.has(`${k}:${raw.cosmetics?.[k]}`)) cos[k] = raw.cosmetics[k];
+  s.cosmetics = cos;
   for (const key of ['musicVolume', 'effectsVolume']) {
     s[key] = typeof raw[key] === 'number' && Number.isFinite(raw[key])
       ? Math.max(0, Math.min(1, raw[key])) : defaults[key];

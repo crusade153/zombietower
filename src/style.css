@@ -332,3 +332,64 @@ button:focus-visible { outline: 3px solid #f47893; outline-offset: 4px; }
 #move-zone.off { pointer-events: none; }
 #dpad.floating-idle { opacity: .55; }
 #dpad.floating-active { opacity: 1; transform-origin: center center; }
+
+/* 보스 등장 연출: 위아래 검은 띠 + 이름 카드 */
+#cine { position: absolute; inset: 0; pointer-events: none; }
+#cine .bar { position: absolute; left: 0; right: 0; height: 0; background: #0b1418; transition: height .35s ease; }
+#cine .bar.top { top: 0; } #cine .bar.bottom { bottom: 0; }
+#cine.on .bar { height: 11vh; }
+#cine .cine-card { position: absolute; left: 50%; top: 58%; transform: translate(-50%, 20px); text-align: center; opacity: 0; transition: opacity .35s, transform .35s; }
+#cine.on .cine-card { opacity: 1; transform: translate(-50%, 0); transition-delay: .25s; }
+#cine .cine-card small { display: block; font-size: 15px; font-weight: 900; letter-spacing: .3em; color: #ffb38a; }
+#cine .cine-card b { display: block; margin: 4px 0; font-size: 44px; font-weight: 950; color: #fff; text-shadow: 0 3px 0 #7a1f1f, 0 0 24px #ff5a2a; }
+#cine .cine-card em { font-style: normal; font-size: 15px; font-weight: 800; color: #ffe2c8; }
+#controls.cinematic, #controls.cinematic * { visibility: hidden; }
+/* 보스 격파 배너 */
+#victory { position: absolute; left: 50%; top: 30%; transform: translate(-50%, 0) scale(.6); text-align: center; opacity: 0; pointer-events: none; }
+#victory.show { animation: victoryPop 2.6s ease-out forwards; }
+#victory b { display: block; font-size: 40px; font-weight: 950; color: #ffd84a; text-shadow: 0 3px 0 #7a5200, 0 0 26px #ffcf40; }
+#victory span { font-size: 26px; font-weight: 950; color: #fff; text-shadow: 0 2px 4px #1c444b; letter-spacing: .2em; }
+@keyframes victoryPop { 0% { opacity: 0; transform: translate(-50%, 0) scale(.6); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1.08); } 20% { transform: translate(-50%, 0) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -20px) scale(1); } }
+/* 업적 알림 */
+#ach-stack { position: absolute; right: calc(var(--safe-r) + 24px); top: calc(var(--safe-t) + 110px); display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
+.ach { display: grid; min-width: 220px; padding: 10px 14px; border: 2px solid #ffd04a; border-radius: 10px; background: #1f3f45f0; color: #fff; box-shadow: 0 0 18px #ffcf4060; animation: achIn .35s ease-out; transition: opacity .5s, transform .5s; }
+.ach b { font-size: 12px; color: #ffd04a; letter-spacing: .05em; }
+.ach span { font-size: 17px; font-weight: 950; }
+.ach small { font-size: 12px; color: #d8f0ea; }
+.ach.out { opacity: 0; transform: translateX(30px); }
+@keyframes achIn { from { opacity: 0; transform: translateX(40px); } }
+/* 칭호 */
+#title-tag { margin-bottom: 6px; font-size: 13px; font-weight: 950; color: #ffe27a; text-shadow: 0 1px 2px #1c444b; white-space: nowrap; }
+/* 업적 화면 */
+.ach-panel { width: min(96vw, 820px); }
+.title-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.stat { padding: 8px; border-radius: 8px; background: #e6f6ff; display: grid; }
+.stat small { font-size: 11px; color: #5e9489; }
+.stat b { font-size: 16px; color: #264e49; }
+.ach-list { display: grid; gap: 6px; text-align: left; }
+.ach-row { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 8px; background: #eef4f2; border: 1px solid #c9dbd4; }
+.ach-row.done { background: #fff6d6; border-color: #e8c35a; }
+.ach-main { flex: 1; display: grid; gap: 2px; }
+.ach-main b { font-size: 14px; color: #264e49; }
+.ach-main small { font-size: 12px; color: #5e7a74; }
+.ach-bar { height: 5px; border-radius: 3px; background: #d4e2de; overflow: hidden; }
+.ach-bar i { display: block; height: 100%; background: #52bf9c; }
+.ach-row.done .ach-bar i { background: #e8b21f; }
+.ach-side { display: grid; text-align: right; font-size: 12px; color: #264e49; font-weight: 800; }
+.ach-side small { font-weight: 700; color: #8a6a10; }
+/* 꾸미기 */
+.cos-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin-bottom: 8px; }
+.cos-label { min-width: 64px; font-size: 13px; font-weight: 900; color: #335752; }
+.cos { display: grid; gap: 2px; justify-items: center; min-width: 76px; padding: 6px 8px; border: 2px solid #b9d3cc; border-radius: 9px; background: #f6fbfa; color: #264e49; font-size: 13px; font-weight: 800; }
+.cos small { font-size: 11px; font-weight: 700; color: #b07800; }
+.cos.owned small { color: #2f8f6c; }
+.cos.on { border-color: #52bf9c; background: #d9f5e9; box-shadow: 0 0 0 2px #52bf9c55; }
+.cos[disabled] { opacity: .5; }
+.cos .sw { width: 22px; height: 10px; border-radius: 4px; border: 1px solid #0002; }
+@media (max-width: 700px), (max-height: 450px) and (orientation: landscape) {
+  #cine .cine-card b { font-size: 30px; }
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cos { min-width: 64px; font-size: 12px; }
+}
+#hud.cine-on #boss-health, #hud.cine-on #toast, #hud.cine-on #hud-center, #hud.cine-on #floaters { visibility: hidden; }

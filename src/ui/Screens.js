@@ -6,6 +6,9 @@ import {
 import { weaponByUid, normalizeSave, writeSave } from '../core/Save.js';
 import { formatTime, starCount } from '../core/StageRun.js';
 import { bossStage } from '../world/TowerGenerator.js';
+import { ACHIEVEMENTS } from '../config/achievements.js';
+import { COSMETICS, COSMETIC_KINDS } from '../config/cosmetics.js';
+import { achievementProgress, recordView, ownedTitles } from '../core/Achievements.js';
 import { icon } from './icons.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -66,6 +69,10 @@ export class Screens {
       case 'resume': this.hide(); g.resume(); break;
       case 'mute': g.toggleMute(); this.showPause(); break;
       case 'stick': g.setStickMode(data.mode); this.showPause(); break;
+      case 'achievements': this.showAchievements(); break;
+      case 'title-set': g.setTitle(data.title); this.showAchievements(); break;
+      case 'ach-back': if (g.state === 'title') this.showTitle(); else this.showPause(); break;
+      case 'cosmetic': g.buyOrEquipCosmetic(data.kind, data.id); this.renderShop(); break;
       case 'title': this.hide(); g.toTitle(); break;
       case 'export-save': {
         const url = URL.createObjectURL(new Blob([JSON.stringify(g.save, null, 2)], { type: 'application/json' }));
@@ -139,6 +146,7 @@ export class Screens {
         <div class="row" style="flex-direction:column;align-items:center">
           <button class="btn green" data-act="resume">${icon('play')} 계속하기</button>
           <button class="btn" data-act="floors">${icon('flag')} 클리어한 층에서 시작</button>
+          <button class="btn" data-act="achievements">${icon('trophy')} 업적 · 칭호 · 기록</button>
           <button class="btn sub" data-act="export-save">저장 파일 백업</button>
           <button class="btn sub" data-act="import-save">저장 파일 가져오기</button>
           <button class="btn sub" data-act="mute">${icon(g.audio.muted ? 'muted' : 'sound')} ${g.audio.muted ? '소리 켜기' : '소리 끄기'}</button>
@@ -327,8 +335,53 @@ export class Screens {
         <div class="abilities">${items}</div>
         <h3 class="shop-h">이동 능력 · 영구 해금</h3>
         <div class="abilities">${abilities}</div>
+        <h3 class="shop-h">꾸미기 · 능력 변화 없음</h3>
+        ${COSMETIC_KINDS.map((kind) => `<div class="cos-row"><span class="cos-label">${COSMETICS[kind].label}</span>${COSMETICS[kind].list.map((c) => {
+          const owned = s.cosmetics.owned.includes(`${kind}:${c.id}`);
+          const on = s.cosmetics[kind] === c.id;
+          const swatch = c.hex !== undefined ? `<i class="sw" style="background:${c.hex === null ? 'linear-gradient(90deg,#f55,#fd4,#5d5,#5af,#a6f)' : `#${c.hex.toString(16).padStart(6, '0')}`}"></i>` : '';
+          return `<button class="cos${on ? ' on' : ''}${owned ? ' owned' : ''}" data-act="cosmetic" data-kind="${kind}" data-id="${c.id}" ${!owned && s.coins < c.cost ? 'disabled' : ''}>${swatch}${esc(c.name)}<small>${on ? '장착 중' : owned ? '장착' : `<i class="coin"></i>${fmt(c.cost)}`}</small></button>`;
+        }).join('')}</div>`).join('')}
         <button class="btn" data-act="close">닫기</button>
-        <p class="hint">아이템은 화면 왼쪽 아이템 칸을 눌러 사용 (PC: 4·5·6·7) · 2단 점프는 공중에서 점프, 대시는 💨 버튼(PC: Shift)</p>
+        <p class="hint">아이템은 점프 버튼 옆 아이템 버튼으로 사용 (PC: 4·5·6·7) · 2단 점프는 공중에서 점프, 대시는 💨 버튼(PC: Shift)</p>
+      </div>`);
+  }
+
+  // ---------- 업적·칭호·기록 ----------
+  showAchievements() {
+    const s = this.g.save;
+    this.mode = 'achievements';
+    const view = recordView(s);
+    const done = ACHIEVEMENTS.filter((a) => s.achievements.includes(a.id)).length;
+    const titles = ownedTitles(s);
+    const rows = ACHIEVEMENTS.map((a) => {
+      const p = achievementProgress(a, s, view);
+      return `<div class="ach-row${p.done ? ' done' : ''}">
+        <div class="ach-main"><b>${p.done ? '🏆' : '🔒'} ${esc(a.name)}</b><small>${esc(a.desc)}</small>
+          <div class="ach-bar"><i style="width:${Math.round((p.cur / p.goal) * 100)}%"></i></div></div>
+        <div class="ach-side"><span>${fmt(p.cur)} / ${fmt(p.goal)}</span><small><i class="coin"></i>${fmt(a.reward)}${a.title ? ` · 「${esc(a.title)}」` : ''}</small></div>
+      </div>`;
+    }).join('');
+    const stat = (label, v) => `<div class="stat"><small>${label}</small><b>${v}</b></div>`;
+    const r = s.record;
+    this._show(`
+      <div class="panel ach-panel">
+        <h2>${icon('trophy')} 업적 · 칭호 · 기록</h2>
+        <h3 class="shop-h">칭호 (화면 왼쪽 위에 표시)</h3>
+        <div class="title-row">
+          <button class="cos${!s.title ? ' on' : ''}" data-act="title-set" data-title="">없음</button>
+          ${titles.map((t) => `<button class="cos${s.title === t ? ' on' : ''}" data-act="title-set" data-title="${esc(t)}">「${esc(t)}」</button>`).join('')}
+          ${titles.length ? '' : '<span class="hint">업적을 달성하면 칭호를 얻어요</span>'}
+        </div>
+        <h3 class="shop-h">누적 기록</h3>
+        <div class="stats-grid">
+          ${stat('처치', fmt(r.kills))}${stat('보스 처치', `${fmt(r.bossKills)} (${r.bossTypes.length}/4종)`)}${stat('우두머리', fmt(r.captainKills))}${stat('황금 망자', fmt(r.goldenKills))}
+          ${stat('최고 콤보', fmt(r.bestCombo))}${stat('필살기 최다', `${fmt(r.bestSpecialKills)}마리`)}${stat('폭발 연쇄', `${fmt(r.bestChain)}마리`)}${stat('아슬아슬', `${fmt(r.nearMisses)}회`)}
+          ${stat('별', `${view.stars}/30`)}${stat('최고 강화', `+${view.maxWeaponLevel}`)}${stat('아이템 사용', fmt(r.itemsUsed))}${stat('정상 정복', `${fmt(r.clears)}회`)}
+        </div>
+        <h3 class="shop-h">업적 ${done} / ${ACHIEVEMENTS.length}</h3>
+        <div class="ach-list">${rows}</div>
+        <button class="btn sub" data-act="ach-back">돌아가기</button>
       </div>`);
   }
 
@@ -346,6 +399,7 @@ export class Screens {
       <div class="panel">
         <h1>❄️ 얼음 성채 해방!</h1>
         <p>최종 보스 용암 군주를 쓰러뜨리고 정상에 도착했다!</p>
+        ${this.g.save.title ? `<p>칭호 <b>「${esc(this.g.save.title)}」</b></p>` : ''}
         <p>처치한 좀비 <b>${fmt(stats.kills)}</b> · 최고 콤보 <b>${fmt(stats.bestCombo || 0)}</b> · 아슬아슬 <b>${fmt(stats.nearMisses || 0)}</b>회 · 사망 <b>${fmt(stats.deaths)}</b> · 보유 코인 <i class="coin"></i> <b>${fmt(stats.coins)}</b></p>
         <div class="row">
           <button class="btn green" data-act="ngplus">새 타워 (무기·코인 유지, 더 어려움)</button>

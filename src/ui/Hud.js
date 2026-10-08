@@ -39,6 +39,21 @@ export class Hud {
     this.resultEl.id = 'stage-result';
     this.el.hud.appendChild(this.resultEl);
     this._resultT = null;
+    // 보스 등장 연출(위아래 검은 띠 + 이름 카드), 격파 배너, 업적 알림, 칭호
+    this.cineEl = document.createElement('div');
+    this.cineEl.id = 'cine';
+    this.cineEl.innerHTML = '<i class="bar top"></i><i class="bar bottom"></i><div class="cine-card"><small></small><b></b><em></em></div>';
+    this.el.hud.appendChild(this.cineEl);
+    this.victoryEl = document.createElement('div');
+    this.victoryEl.id = 'victory';
+    this.el.hud.appendChild(this.victoryEl);
+    this.achEl = document.createElement('div');
+    this.achEl.id = 'ach-stack';
+    this.el.hud.appendChild(this.achEl);
+    this.titleEl = document.createElement('div');
+    this.titleEl.id = 'title-tag';
+    this.titleEl.className = 'hidden';
+    $('hud-left').insertBefore(this.titleEl, $('hud-left').firstChild);
     this.el.pause.innerHTML = icon('pause');
     this.el.pause.title = '일시정지';
     document.querySelector('.lava-ico').innerHTML = icon('flame');
@@ -128,6 +143,50 @@ export class Hud {
         const t = Math.ceil(timers[id] || 0);
         return `<button class="item-btn${t ? ' active' : ''}" data-id="${id}" aria-label="${ITEMS[id].name}">${ITEMS[id].icon}<span>${items[id] || 0}</span>${t ? `<em>${t}s</em>` : ''}</button>`;
       }).join('');
+    });
+  }
+
+  bossIntro(label, name, tip) {
+    this.cineEl.querySelector('.cine-card small').textContent = label;
+    this.cineEl.querySelector('.cine-card b').textContent = name;
+    this.cineEl.querySelector('.cine-card em').textContent = tip;
+    this.cineEl.classList.add('on');
+    this.el.controls.classList.add('cinematic');
+    this.el.hud.classList.add('cine-on');
+  }
+
+  bossIntroEnd() {
+    this.cineEl.classList.remove('on');
+    this.el.controls.classList.remove('cinematic');
+    this.el.hud.classList.remove('cine-on');
+  }
+
+  bossDefeated(name) {
+    this.victoryEl.innerHTML = `<b>👑 ${name}</b><span>격파!</span>`;
+    this.victoryEl.classList.remove('show');
+    void this.victoryEl.offsetWidth;
+    this.victoryEl.classList.add('show');
+    clearTimeout(this._victoryT);
+    this._victoryT = setTimeout(() => this.victoryEl.classList.remove('show'), 2600);
+  }
+
+  /** 업적 달성 알림 (오른쪽 위에서 밀려 나와 몇 초 뒤 사라짐) */
+  showAchievement(a) {
+    if (this.achEl.childElementCount >= 4) this.achEl.firstElementChild.remove();
+    const d = document.createElement('div');
+    d.className = 'ach';
+    d.innerHTML = `<b>🏆 업적 달성</b><span></span><small></small>`;
+    d.querySelector('span').textContent = a.name;
+    d.querySelector('small').textContent = `+${a.reward} 코인${a.title ? ` · 칭호 「${a.title}」` : ''}`;
+    this.achEl.appendChild(d);
+    setTimeout(() => d.classList.add('out'), 3600);
+    setTimeout(() => d.remove(), 4200);
+  }
+
+  setTitle(t) {
+    this._set('title', t, () => {
+      this.titleEl.classList.toggle('hidden', !t);
+      this.titleEl.textContent = t ? `「${t}」` : '';
     });
   }
 

@@ -73,6 +73,7 @@ export const ZOMBIES = {
     name: '마그마 거인', hp: 620, dmg: 20, speed: 2.2, coin: 140, scale: 2.2, radius: 0.95, height: 4.0,
     colors: { skin: 0x8a3b25, shirt: 0x3a2224, pants: 0x2a1d22 },
     attackRange: 3.0, windup: 0.9, cooldown: 2.1, knockResist: 0.85, boss: true,
+    intro: '붉은 원이 퍼지면 점프로 피하라',
   },
   plagueQueen: {
     name: '역병 여왕', hp: 1300, dmg: 22, speed: 2.3, coin: 260, scale: 2.5, radius: 1.05, height: 4.5,
@@ -80,11 +81,13 @@ export const ZOMBIES = {
     attackRange: 3.2, windup: 0.85, cooldown: 1.9, knockResist: 0.9, boss: true,
     volley: true, // 멀면 산성탄 3발
     summon: { type: 'runner', count: 3, every: 9, max: 6 }, // 주기적으로 졸개 소환
+    intro: '졸개를 부르고 멀리서 산성탄을 쏜다',
   },
   boss: {
     name: '화산 수문장', hp: 900, dmg: 24, speed: 2.6, coin: 200, scale: 2.4, radius: 1.0, height: 4.3,
     colors: { skin: 0x763d3b, shirt: 0x362335, pants: 0x262235 },
     attackRange: 3.2, windup: 0.8, cooldown: 2.0, knockResist: 0.85, boss: true,
+    intro: '내려찍기 전에 붉은 원 밖으로',
   },
   brute: {
     name: '흑요석 기사', hp: 320, dmg: 22, speed: 2.3, coin: 35, scale: 1.65, radius: 0.7, height: 3.0,
@@ -100,6 +103,7 @@ export const ZOMBIES = {
     name: '용암 군주 · 이그니스', hp: 1800, dmg: 26, speed: 2.4, coin: 600, scale: 3.1, radius: 1.3, height: 5.6,
     colors: { skin: 0x7d363c, shirt: 0x281c30, pants: 0x1d1928 },
     attackRange: 3.5, windup: 1.1, cooldown: 1.8, knockResist: 0.95, boss: true, finalBoss: true,
+    intro: '체력 절반에서 폭주한다 · 불길은 점프로 회피',
   },
 };
 

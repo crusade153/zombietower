@@ -7,7 +7,7 @@ import { upgradeCost } from '../src/combat/Weapons.js';
 function fakeGame(coins = 1000) {
   const g = {
     state: 'play', invisibleT: 0, magnetT: 0,
-    save: { coins, items: { spring: 0, cloak: 0, potion: 0, magnet: 0 } },
+    save: { coins, items: { spring: 0, cloak: 0, potion: 0, magnet: 0 }, record: { itemsUsed: 0 } },
     player: {
       alive: true, hp: 30, maxHp: 100, coyote: 0, airJumped: true, ghost: false,
       body: { x: 0, y: 0, z: 0, vy: 0, grounded: true },
@@ -19,7 +19,7 @@ function fakeGame(coins = 1000) {
     audio: { play() {} },
     markDirty() {},
   };
-  for (const k of ['buyItem', 'useItem', 'updateItemEffects', 'endItemEffects']) g[k] = Game.prototype[k];
+  for (const k of ['buyItem', 'useItem', 'updateItemEffects', 'endItemEffects', 'rec', 'recMax']) g[k] = Game.prototype[k];
   Object.defineProperty(g, 'invisible', { get() { return this.invisibleT > 0; } });
   return g;
 }

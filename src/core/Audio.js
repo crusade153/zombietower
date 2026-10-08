@@ -151,6 +151,24 @@ export class AudioSys {
     s.onended = () => { s.disconnect(); f.disconnect(); g.disconnect(); };
   }
 
+  /** 보스전: BGM을 조금 빠르게 + 북소리 반주 */
+  setBossMode(on) {
+    if (on === !!this.bossMode) return;
+    this.bossMode = on;
+    try { this.music.playbackRate = on ? 1.1 : 1; } catch (e) { /* 무시 */ }
+    clearInterval(this._bossTimer);
+    this._bossBeat = 0;
+    if (on) this._bossTimer = setInterval(() => this._bossTick(), 235);
+  }
+
+  _bossTick() {
+    if (!this.ctx || this.muted || this.background || !this.playing) return;
+    const i = this._bossBeat++ % 8;
+    if (i === 0 || i === 3 || i === 4) this._tone(70, 38, 0.2, 'sine', 0.55); // 킥
+    if (i === 2 || i === 6) this._noise(0.12, 0.28, 2600, 900, 'bandpass'); // 스네어
+    if (i % 2 === 1) this._noise(0.03, 0.08, 9000, 6000, 'highpass'); // 하이햇
+  }
+
   playImpact(weapon = {}, killed = false) {
     if (!this.ctx || this.muted || this.background) return;
     const now = this.ctx.currentTime;
@@ -200,6 +218,9 @@ export class AudioSys {
       case 'dash': this._noise(0.18, 0.4, 800, 5000, 'bandpass'); this._tone(300, 600, 0.08, 'triangle', 0.08); break;
       case 'spring': this._tone(180, 900, 0.3, 'sine', 0.3); this._tone(360, 1200, 0.18, 'triangle', 0.1, 0.05); break;
       case 'cloak': this._noise(0.5, 0.25, 2000, 6000, 'bandpass'); [880, 660, 990].forEach((f, i) => this._tone(f, f, 0.14, 'sine', 0.1, i * 0.08)); break;
+      case 'bossroar': this._tone(90, 45, 1.1, 'sawtooth', 0.32); this._noise(1.0, 0.45, 600, 60, 'lowpass'); this._tone(55, 30, 1.2, 'sine', 0.6, 0.1); break;
+      case 'victory': [523, 659, 784, 1046, 784, 1046, 1318].forEach((f, i) => this._tone(f, f, 0.24, 'triangle', 0.2, i * 0.11)); break;
+      case 'achieve': [784, 1046, 1318, 1568].forEach((f, i) => this._tone(f, f, 0.18, 'square', 0.1, i * 0.07)); this._tone(2093, 2093, 0.4, 'triangle', 0.1, 0.3); break;
       case 'coin': this._tone(880, 880, 0.07, 'square', 0.1); this._tone(1320, 1320, 0.12, 'square', 0.1, 0.07); break;
       case 'heal': this._tone(520, 1040, 0.25, 'sine', 0.2); break;
       case 'hurt': this._tone(200, 70, 0.25, 'sawtooth', 0.28); this._noise(0.12, 0.3, 700, 150, 'lowpass'); break;

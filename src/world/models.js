@@ -91,6 +91,44 @@ export function sphere(w, h, d, material, x = 0, y = 0, z = 0) {
   return m;
 }
 
+/** 꾸미기 모자. 머리(head) 그룹에 붙인다. 없으면 null */
+export function makeHat(id) {
+  if (!id || id === 'none') return null;
+  const top = modelStyle === 'classic' ? 0.24 : 0.36;
+  const g = new THREE.Group();
+  const std = (color, emissive = 0, metalness = 0.1) => new THREE.MeshStandardMaterial({ color, emissive, metalness, roughness: 0.4 });
+  const add = (geo, mat, x, y, z, rx = 0, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, 0, rz); g.add(m); return m; };
+  if (id === 'crown') {
+    const gold = std(0xffcc33, 0x3a2600, 0.7);
+    add(new THREE.CylinderGeometry(0.27, 0.27, 0.16, 16, 1, true), gold, 0, top + 0.06, 0).material.side = THREE.DoubleSide;
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      add(new THREE.ConeGeometry(0.06, 0.16, 6), gold, Math.sin(a) * 0.24, top + 0.2, Math.cos(a) * 0.24);
+    }
+    add(new THREE.OctahedronGeometry(0.06), std(0xff4a6a, 0x400010), 0, top + 0.07, 0.27);
+  } else if (id === 'wizard') {
+    const cloth = std(0x6a4bd8);
+    add(new THREE.CylinderGeometry(0.46, 0.46, 0.04, 20), cloth, 0, top + 0.02, 0);
+    add(new THREE.ConeGeometry(0.3, 0.72, 16), cloth, 0, top + 0.4, -0.04, -0.15);
+    add(new THREE.OctahedronGeometry(0.07), std(0xffe14a, 0x6a5000), 0.12, top + 0.32, 0.22);
+  } else if (id === 'horns') {
+    const red = std(0xd8282f, 0x300000);
+    for (const s of [-1, 1]) add(new THREE.ConeGeometry(0.07, 0.34, 8), red, s * 0.24, top + 0.1, 0.05, 0, -s * 0.45);
+  } else if (id === 'halo') {
+    add(new THREE.TorusGeometry(0.27, 0.035, 8, 28), std(0xfff3a0, 0xffd84a), 0, top + 0.34, 0, Math.PI / 2);
+  } else if (id === 'bunny') {
+    const white = std(0xfdfdfd);
+    const pink = std(0xffa6c4);
+    for (const s of [-1, 1]) {
+      add(new THREE.SphereGeometry(1, 10, 8), white, s * 0.14, top + 0.26, -0.02, 0, -s * 0.18).scale.set(0.08, 0.3, 0.05);
+      add(new THREE.SphereGeometry(1, 10, 8), pink, s * 0.14, top + 0.26, 0.02, 0, -s * 0.18).scale.set(0.045, 0.22, 0.03);
+    }
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  g.userData.hat = id;
+  return g;
+}
+
 // 먼 몬스터용 한 덩어리 모형: 종류별로 한 번만 만들고 모든 개체가 공유 (그리기 1회)
 const lodCache = new Map();
 const lodMat = new THREE.MeshLambertMaterial({ vertexColors: true });

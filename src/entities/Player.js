@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { PHYS, PLAYER, ABILITIES } from '../config/balance.js';
 import { WEAPONS } from '../config/weapons.js';
 import { moveAndCollide } from '../core/physics.js';
-import { makeHumanoid, makeBlob, makeWeaponMesh, disposeWorld, replaceHumanoid } from '../world/models.js';
+import { makeHumanoid, makeBlob, makeWeaponMesh, disposeWorld, replaceHumanoid, makeHat } from '../world/models.js';
+import { cosmetic } from '../config/cosmetics.js';
 
 export function groundYBelow(x, y, z, plats) {
   let best = null;
@@ -124,11 +125,20 @@ export class Player {
     this._ghost = { saved, outlines, mats: [body, line] };
   }
 
+  /** 꾸미기 적용: 옷 색은 모형을 다시 만들고, 모자는 머리에 붙인다 */
+  setLook(look) {
+    this.look = { ...look };
+    this.setGraphicsStyle();
+  }
+
   setGraphicsStyle() {
     const ghost = !!this._ghost;
     if (ghost) this.setGhost(false);
-    this.h = replaceHumanoid(this.h);
+    const shirt = cosmetic('color', this.look?.color)?.hex;
+    this.h = replaceHumanoid(this.h, shirt ? { shirt } : {});
     this.parts = this.h.parts;
+    const hat = makeHat(this.look?.hat);
+    if (hat) this.parts.head.add(hat);
     this.weaponMesh = null;
     this.weaponKey = undefined;
     this.setWeapon(this.weapon);

@@ -26,6 +26,8 @@ import {
 import { Combo, LavaEscape, rollCrit } from '../combat/Thrills.js';
 import { StageRun } from './StageRun.js';
 import { startSpecial, updateSpecial } from '../combat/Specials.js';
+import { unlockNew, BOSS_TYPES } from './Achievements.js';
+import { cosmetic, COSMETICS } from '../config/cosmetics.js';
 import { Hud } from '../ui/Hud.js';
 import { Screens } from '../ui/Screens.js';
 import { makeRng } from './rng.js';
@@ -99,6 +101,11 @@ export class Game {
     this.specialCd = 0;
     this.special = null; // 지속형 필살기(회오리 베기·탄막 난사) 진행 상태
     this.invisibleT = 0; // 투명 망토 남은 시간
+    this.bossIntro = null; // 보스 등장 연출 { z, t }
+    this.slowmo = 0; // 보스 격파 슬로모션 남은 시간(실제 초)
+    this.specialWindow = 0; // 필살기 처치 집계 시간
+    this.specialKills = 0;
+    this._achT = 0;
     this.magnetT = 0; // 코인 자석 남은 시간
     this._saveDirty = false;
     this._saveT = 0;
@@ -146,6 +153,7 @@ export class Game {
     this.near = buildNearCache(this.tower, this.lava.floor);
     this.player = new Player(this.scene);
     this.player.abilities = this.save.abilities;
+    this.player.setLook(this.save.cosmetics);
 
     this.curGround = null;
     this.playerSafe = true;
@@ -425,18 +433,25 @@ export class Game {
   // ------------------------------------------------------------------
   frame(ms) {
     const now = ms / 1000;
-    const dt = Math.min(0.1, now - (this.lastNow || now));
+    const dt = Math.max(0, Math.min(0.1, now - (this.lastNow || now))); // 시계가 거꾸로 가도 안전
     this.lastNow = now;
     this.nowSec = now;
     this.syncAudioState();
 
-    if (!this.manualStep && (this.state === 'play' || this.state === 'dead')) {
+    if (this.bossIntro && this.state === 'play') {
+      // 보스 등장 연출: 게임 시간은 멈추고 카메라만 보스를 비춘다
+      this.bossIntro.t -= dt;
+      this.acc = 0;
+      if (this.bossIntro.t <= 0) this.endBossIntro();
+    } else if (!this.manualStep && (this.state === 'play' || this.state === 'dead')) {
       if (this.hitstop > 0) {
         // 히트스톱: 게임 시간만 잠깐 멈추고 화면 흔들림·파티클은 계속 그린다
         this.hitstop = this.hitstop - dt > 0.002 ? this.hitstop - dt : 0;
         this.acc = 0;
       } else {
-        this.acc += dt;
+        // 보스 격파 직후 잠깐 슬로모션
+        if (this.slowmo > 0) this.slowmo = Math.max(0, this.slowmo - dt);
+        this.acc += dt * (this.slowmo > 0 ? 0.3 : 1);
         let n = 0;
         while (this.acc >= PHYS.fixedDt && n < 12) {
           this.step(PHYS.fixedDt);
@@ -497,18 +512,18 @@ export class Game {
     if (P.events.jumped) {
       if (vanishingIn(P.lastGround, this.time) <= THRILL.lastSecond) this.onNearMiss('platform');
       this.audio.play('jump');
-      this.fx.ring(b.x, b.y, b.z, 0.85, 0xc1ffe9, 0.32, true);
-      this.fx.burst(b.x, b.y + 0.05, b.z, 0xf8ffea, 6, 1.7, 0.32, 0.09);
+      this.fx.ring(b.x, b.y, b.z, 0.85, this.trailColor(), 0.32, true);
+      this.fx.burst(b.x, b.y + 0.05, b.z, this.trailColor(0.15), 6, 1.7, 0.32, 0.09);
     }
     if (P.events.doubleJumped) {
       this.audio.play('jump2');
-      this.fx.ring(b.x, b.y, b.z, 1.2, 0xbfe9ff, 0.3, true);
-      this.fx.burst(b.x, b.y + 0.1, b.z, 0xffffff, 8, 2.4, 0.35, 0.08);
+      this.fx.ring(b.x, b.y, b.z, 1.2, this.trailColor(), 0.3, true);
+      this.fx.burst(b.x, b.y + 0.1, b.z, this.trailColor(0.3), 8, 2.4, 0.35, 0.08);
     }
     if (P.events.dashed) {
       this.audio.play('dash');
-      this.fx.burst(b.x, b.y + 0.9, b.z, 0xd8f6ff, 10, 2.5, 0.3, 0.1);
-      this.fx.line(b.x, b.y + 0.9, b.z, b.x - P.dashDir.x * 2.5, b.y + 0.9, b.z - P.dashDir.z * 2.5, 0xffffff, 0.12, 0.2);
+      this.fx.burst(b.x, b.y + 0.9, b.z, this.trailColor(), 10, 2.5, 0.3, 0.1);
+      this.fx.line(b.x, b.y + 0.9, b.z, b.x - P.dashDir.x * 2.5, b.y + 0.9, b.z - P.dashDir.z * 2.5, this.trailColor(0.5), 0.12, 0.2);
     }
     if (P.events.landed) {
       this.audio.play('land');
@@ -545,6 +560,8 @@ export class Game {
     this.combo.update(dt);
     this.nearT = Math.max(0, this.nearT - dt);
     this.updateItemEffects(dt);
+    this.specialWindow = Math.max(0, this.specialWindow - dt);
+    if ((this._achT += dt) > 0.5) { this._achT = 0; this.checkAchievements(); }
     if (this.run && !this.playerSafe) this.run.t += dt;
     this.updateLavaAmbience(dt);
     this.updateClimbers(dt);
@@ -609,7 +626,10 @@ export class Game {
         this.finalBattle = !this.save.finalBossDefeated;
         this.checkpoint = this.tower.bossSanctuary;
         this.lava.setIdle(p.maxY - LAVA.startGap);
-        if (this.finalBattle) this.hud.toast('🔥 최종 결전! 용암 군주 · 이그니스', 3000);
+        if (this.finalBattle) {
+          const fb = this.zombies.find((z) => z.def.finalBoss && !z.dead);
+          if (fb) this.startBossIntro(fb, '최종 결전');
+        }
       } else if (p.checkpoint && this.checkpoint !== p) {
         this.checkpoint = p;
         this.hud.toast('🚩 체크포인트', 900);
@@ -652,6 +672,7 @@ export class Game {
       if (k === TOWER.stages) {
         this.hud.toast('🚁 정상 도착!', 2500);
         this.save.cleared = true;
+        this.rec('clears');
         this.markDirty(true);
         setTimeout(() => {
           if (this.state === 'play') { this.state = 'clear'; this.input.clearAll(); this.screens.showClear({ ...this.stats, bestCombo: this.combo.best, coins: this.save.coins }); }
@@ -706,6 +727,7 @@ export class Game {
     this.state = 'dead';
     this.deadT = 1.6;
     this.stats.deaths++;
+    this.rec('deaths');
     if (this.run) this.run.hits++;
     this.resetCharge();
     this.endItemEffects();
@@ -813,6 +835,8 @@ export class Game {
         this.cd = Math.max(this.cd, 0.25);
         this.pending = null;
         startSpecial(this, w);
+        this.specialWindow = (WEAPONS[w.kind].special.duration || 0) + 0.5;
+        this.specialKills = 0;
       }
       this.charge = 0;
     }
@@ -1033,6 +1057,7 @@ export class Game {
     this.cam.shake = Math.max(this.cam.shake, 0.7);
     this.addHitstop(0.08);
     const dmg = src.dmg * 4;
+    let chainKills = 0;
     for (const z of this.zombies) {
       if (z === src || z.dead || z.removed) continue;
       const zb = z.body;
@@ -1042,8 +1067,10 @@ export class Game {
       if (dist > R + z.def.radius || Math.abs(zb.y - b.y) > 2.5) continue;
       const l = dist || 1;
       const killed = z.takeDamage(this, dmg, { kx: dx / l, kz: dz / l, knock: 10, blast: true });
+      if (killed) chainKills++;
       this.hud.floater({ x: zb.x, y: zb.y + z.def.height + 0.3, z: zb.z }, Math.round(dmg), killed ? '#ffd04a' : '#ffb070', 1.2);
     }
+    this.recMax('bestChain', chainKills);
     const P = this.player;
     const pb = P.body;
     if (P.alive && Math.hypot(pb.x - b.x, pb.z - b.z) < (self ? R : R * 0.7) && Math.abs(pb.y - b.y) < 2) {
@@ -1053,8 +1080,119 @@ export class Game {
   }
 
   onBossSpotted(z) {
-    this.hud.toast(z.def.captain ? `⚠️ ${z.def.name} 등장!` : `⚠️ 보스 · ${z.def.name}!`, 1800);
-    this.audio.play('warn');
+    if (z.def.captain) {
+      this.hud.toast(`⚠️ ${z.def.name} 등장!`, 1800);
+      this.audio.play('warn');
+    } else this.startBossIntro(z, `${z.stage}층 보스`);
+  }
+
+  // ------------------------------------------------------------------
+  // 보스 연출
+  // ------------------------------------------------------------------
+  startBossIntro(z, label) {
+    if (this.bossIntro) return;
+    this.bossIntro = { z, t: 2.1 };
+    const pb = this.player.body;
+    z.facing = Math.atan2(pb.x - z.body.x, pb.z - z.body.z); // 보스가 플레이어를 노려본다
+    this.input.clearAll();
+    this.hud.bossIntro(label, z.def.name, z.def.intro || '');
+    this.audio.play('bossroar');
+    this.cam.shake = Math.max(this.cam.shake, 0.6);
+  }
+
+  endBossIntro() {
+    const z = this.bossIntro.z;
+    this.bossIntro = null;
+    this.hud.bossIntroEnd();
+    const b = this.player.body;
+    const dx = z.body.x - b.x;
+    const dz = z.body.z - b.z;
+    const l = Math.hypot(dx, dz) || 1;
+    this.cam.dist = 8.3;
+    this.cam.snapTo(b, { x: dx / l, z: dz / l });
+    this.player.faceDir(dx, dz, 0.3);
+  }
+
+  /** 등장 연출 중 카메라: 플레이어 뒤에서 보스를 크게 비춘다 */
+  bossIntroCamera(dt) {
+    const z = this.bossIntro.z;
+    const b = this.player.body;
+    const zb = z.body;
+    const dx = zb.x - b.x;
+    const dz = zb.z - b.z;
+    // 플레이어 쪽에서, 플레이어보다 보스에 가까이 다가가 올려다보듯 비춘다 → 사이의 기둥에 가리지 않는다
+    const want = Math.atan2(dx, dz);
+    let diff = want - this.cam.yaw;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    const k = 1 - Math.exp(-5 * dt);
+    this.cam.yaw += diff * k;
+    this.cam.pitch += (0.08 - this.cam.pitch) * k;
+    const gap = Math.hypot(dx, dz);
+    this.cam.dist += (Math.max(5, Math.min(gap * 0.75, 4 + z.def.height * 1.4)) - this.cam.dist) * k;
+    const tx = zb.x;
+    const ty = zb.y + z.def.height * 0.5;
+    const tz = zb.z;
+    this.cam.target.x += (tx - this.cam.target.x) * k;
+    this.cam.target.y += (ty - this.cam.target.y) * k;
+    this.cam.target.z += (tz - this.cam.target.z) * k;
+    this.cam.shake = Math.max(0, this.cam.shake - dt * 1.5);
+    this.cam._apply(dt, 0);
+  }
+
+  // ------------------------------------------------------------------
+  // 업적·기록
+  // ------------------------------------------------------------------
+  rec(key, n = 1) { this.save.record[key] = (this.save.record[key] || 0) + n; }
+  recMax(key, v) { if (v > (this.save.record[key] || 0)) this.save.record[key] = v; }
+
+  checkAchievements() {
+    const got = unlockNew(this.save);
+    if (!got.length) return;
+    for (const a of got) {
+      this.save.coins += a.reward;
+      this.hud.showAchievement(a);
+    }
+    this.hud.setCoins(this.save.coins);
+    this.audio.play('achieve');
+    this.markDirty(true);
+  }
+
+  setTitle(t) {
+    this.save.title = t || '';
+    this.hud.setTitle(this.save.title);
+    this.markDirty(true);
+  }
+
+  // ------------------------------------------------------------------
+  // 꾸미기
+  // ------------------------------------------------------------------
+  /** 산 적 없으면 코인으로 사고, 이미 있으면 바로 장착 */
+  buyOrEquipCosmetic(kind, id) {
+    const c = cosmetic(kind, id);
+    const s = this.save;
+    if (!c) return false;
+    const key = `${kind}:${id}`;
+    if (!s.cosmetics.owned.includes(key)) {
+      if (s.coins < c.cost) return false;
+      s.coins -= c.cost;
+      s.cosmetics.owned.push(key);
+      this.hud.setCoins(s.coins);
+      this.audio.play('upgrade');
+    } else this.audio.play('ui');
+    s.cosmetics[kind] = id;
+    this.player.setLook(s.cosmetics);
+    if (this.invisibleT > 0) this.player.setGhost(true);
+    this.markDirty(true);
+    return true;
+  }
+
+  /** 점프·대시 효과 색 (꾸미기). 무지개는 시간에 따라 바뀐다 */
+  trailColor(lighten = 0) {
+    const c = cosmetic('trail', this.save.cosmetics.trail) || COSMETICS.trail.list[0];
+    const col = this._trailCol || (this._trailCol = new THREE.Color());
+    if (c.hex === null) col.setHSL((this.time * 0.6) % 1, 0.9, 0.62 + lighten * 0.3);
+    else col.setHex(c.hex).lerp(new THREE.Color(0xffffff), lighten);
+    return col.getHex();
   }
 
   /** 좀비 하나를 지정 위치에 만들어 바로 플레이어를 쫓게 한다 */
@@ -1144,6 +1282,7 @@ export class Game {
     this.save.coins += reward;
     this.stageCoins += reward;
     this.stats.nearMisses++;
+    this.rec('nearMisses');
     this.markDirty();
     this.hud.setCoins(this.save.coins);
     const b = P.body;
@@ -1160,13 +1299,26 @@ export class Game {
       this.save.finalBossDefeated = true;
       this.finalBattle = false;
       this.markDirty(true);
-      this.hud.toast('👑 용암 군주 격파! 다음 안전구역에서 성채 해방', 3500);
+      this.hud.toast('다음 안전구역에서 성채 해방!', 3500);
       this.audio.play('rare');
       this.fx.confetti(z.body.x, z.body.y + 2, z.body.z);
     }
     const zb = z.body;
     const w = o.weapon || this.currentWeapon;
     const c = this.combo.add();
+    this.rec('kills');
+    this.recMax('bestCombo', c.count);
+    if (this.specialWindow > 0) this.recMax('bestSpecialKills', ++this.specialKills);
+    if (z.def.flee) this.rec('goldenKills');
+    if (z.def.captain) this.rec('captainKills');
+    else if (z.def.boss) {
+      this.rec('bossKills');
+      if (BOSS_TYPES.includes(z.type) && !this.save.record.bossTypes.includes(z.type)) this.save.record.bossTypes.push(z.type);
+      this.slowmo = 1.4;
+      this.hud.bossDefeated(z.def.name);
+      this.audio.play('victory');
+      this.audio.setBossMode(false);
+    }
     let total = z.coin;
     if (w && hasPerk(w, 'coin') && !o.burn) total *= 1.15;
     if (!z.def.boss) total *= c.mult;
@@ -1198,7 +1350,7 @@ export class Game {
     }
     this.fx.burst(zb.x, zb.y + 1, zb.z, 0xff7a32, 10, 5, 0.5);
     if (z.def.boss && !z.def.finalBoss) {
-      this.hud.toast(z.def.captain ? `👑 ${z.def.name} 처치!` : `👑 보스 처치! ${z.def.name}`, 2000);
+      if (z.def.captain) this.hud.toast(`👑 ${z.def.name} 처치!`, 2000);
       this.cam.shake = 1;
     }
   }
@@ -1468,6 +1620,7 @@ export class Game {
     if (id === 'potion' && P.hp >= P.maxHp) { this.hud.toast('체력이 가득 찼어요', 800); return false; }
     if (id === 'cloak' && this.invisibleT > 0) return false;
     s.items[id]--;
+    this.rec('itemsUsed');
     this.markDirty();
     if (id === 'spring') {
       b.vy = it.power;
@@ -1628,7 +1781,8 @@ export class Game {
     const hint = P.lastGround && P.lastGround.next;
     const mv = this.input.getMove();
     const autoAlign = mv.y > 0.1 && P.alive;
-    if (this.state === 'play' || this.state === 'dead' || this.state === 'paused' || this.state === 'modal') {
+    if (this.bossIntro) this.bossIntroCamera(dt);
+    else if (this.state === 'play' || this.state === 'dead' || this.state === 'paused' || this.state === 'modal') {
       this.cam.update(this.state === 'play' || this.state === 'dead' ? dt : 0, b, this.input, hint, autoAlign, now, this.state !== 'dead');
     }
     P.syncVisual(dt, this.near(b.y), this.time);
@@ -1650,6 +1804,8 @@ export class Game {
       ? this.zombies.find((z) => z.def.finalBoss && !z.dead)
       : this.zombies.find((z) => z.def.boss && !z.def.finalBoss && !z.dead && z.alerted && Math.abs(z.stageIdx - this.bandStage) <= 1);
     this.hud.setBoss(boss || null);
+    this.audio.setBossMode(!!boss && !boss.def.captain && this.state !== 'title');
+    this.hud.setTitle(this.save.title);
     const gap = b.y - this.lava.y;
     this.hud.setLava(gap, this.lava.state, LAVA.warnGap);
     this.hud.setVignette(this.vig || 0);
