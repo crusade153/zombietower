@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { PHYS } from '../config/balance.js';
 import { ZOMBIES, hpScale, dmgScale, coinScale } from '../config/zombies.js';
 import { moveAndCollide, groundBelow } from '../core/physics.js';
-import { makeHumanoid, makeBlob, replaceHumanoid, disposeWorld } from '../world/models.js';
+import { makeHumanoid, makeBlob, replaceHumanoid, disposeWorld, makeZombieLod } from '../world/models.js';
+
+const LOD_DIST = 20; // 이보다 멀면 한 덩어리 모형으로 그린다(보스 제외)
 
 const barGeo = new THREE.PlaneGeometry(1, 0.14);
 const barBg = new THREE.MeshBasicMaterial({ color: 0x000000, depthTest: false, transparent: true, opacity: 0.7 });
@@ -56,6 +58,9 @@ export class Zombie {
     this.parts.armL.rotation.x = -1.4;
     this.parts.armR.rotation.x = -1.4;
     this.addGear();
+    this.lod = d.boss ? null : makeZombieLod(type, d);
+    if (this.lod) this.root.add(this.lod);
+    this.far = false;
     game.scene.add(this.root);
     this.blob = makeBlob(d.radius * 1.3);
     game.scene.add(this.blob);
@@ -83,6 +88,7 @@ export class Zombie {
     });
     this.parts = this.h.parts;
     this.addGear();
+    this.h.model.visible = !this.far;
   }
 
   /** 변종 장비: 폭탄(등)·방패(앞)·왕관(황금). 두 그래픽 스타일 공통으로 몸통/머리에 붙인다 */
@@ -99,7 +105,6 @@ export class Zombie {
     const add = (parent, geo, m, x, y, z) => {
       const mesh = new THREE.Mesh(geo, m);
       mesh.position.set(x, y, z);
-      mesh.castShadow = true;
       parent.add(mesh);
       return mesh;
     };
@@ -458,6 +463,19 @@ export class Zombie {
     if (this.dead) {
       this.blob.visible = false;
       return;
+    }
+    // 거리에 따라 정밀 모형 ↔ 한 덩어리 모형
+    if (this.lod) {
+      const cp = g.camera.position;
+      const far = (b.x - cp.x) ** 2 + (b.y - cp.y) ** 2 + (b.z - cp.z) ** 2 > LOD_DIST * LOD_DIST && this.flashT <= 0;
+      if (far !== this.far) { this.far = far; this.h.model.visible = !far; this.lod.visible = far; }
+      if (far) {
+        this.bar.visible = false;
+        const gy = g.groundYAt(b.x, b.y, b.z);
+        this.blob.visible = gy !== null;
+        if (gy !== null) this.blob.position.set(b.x, gy + 0.03, b.z);
+        return;
+      }
     }
     const sp = Math.hypot(this.mv.x, this.mv.z);
     this.animT += dt * (3 + sp * 1.6);

@@ -9,6 +9,10 @@ const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 16);
 const roundGeo = new RoundedBoxGeometry(1, 1, 1, 2, 0.14);
 const sphereGeo = new THREE.SphereGeometry(1, 16, 12);
+// 일반 몬스터용 저해상도 도형 (몬스터가 많아 삼각형 수를 약 1/3로 줄인다)
+const roundGeoLow = new RoundedBoxGeometry(1, 1, 1, 1, 0.14);
+const sphereGeoLow = new THREE.SphereGeometry(1, 10, 7);
+let lowDetail = false;
 const matCache = new Map();
 let modelStyle = 'polished';
 export function setModelStyle(style) { modelStyle = style === 'classic' ? 'classic' : 'polished'; }
@@ -47,7 +51,7 @@ export function batchMeshes(group) {
     batches.get(mesh.material).push(geo);
   }
   // Temporary unique geometries are freed, shared primitives remain cached.
-  const shared = new Set([boxGeo, cylGeo, roundGeo, sphereGeo]);
+  const shared = new Set([boxGeo, cylGeo, roundGeo, sphereGeo, roundGeoLow, sphereGeoLow]);
   new Set(meshes.map((m) => m.geometry)).forEach((geo) => { if (!shared.has(geo)) geo.dispose(); });
   group.clear();
   for (const [material, geos] of batches) {
@@ -74,29 +78,68 @@ export function cyl(rTop, h, material, x = 0, y = 0, z = 0) {
 }
 
 export function rounded(w, h, d, material, x = 0, y = 0, z = 0) {
-  const m = new THREE.Mesh(modelStyle === 'classic' ? boxGeo : roundGeo, material);
+  const m = new THREE.Mesh(modelStyle === 'classic' ? boxGeo : (lowDetail ? roundGeoLow : roundGeo), material);
   m.scale.set(w, h, d);
   m.position.set(x, y, z);
   return m;
 }
 
 export function sphere(w, h, d, material, x = 0, y = 0, z = 0) {
-  const m = new THREE.Mesh(modelStyle === 'classic' ? boxGeo : sphereGeo, material);
+  const m = new THREE.Mesh(modelStyle === 'classic' ? boxGeo : (lowDetail ? sphereGeoLow : sphereGeo), material);
   m.scale.set(w, h, d);
   m.position.set(x, y, z);
   return m;
 }
 
+// 먼 몬스터용 한 덩어리 모형: 종류별로 한 번만 만들고 모든 개체가 공유 (그리기 1회)
+const lodCache = new Map();
+const lodMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+lodMat.userData.shared = true;
+export function makeZombieLod(type, d) {
+  let geo = lodCache.get(type);
+  if (!geo) {
+    const c = d.colors;
+    const parts = [
+      [0.74, 0.62, 0.46, c.shirt, 0, 0.98, 0], // 몸통
+      [0.76, 0.64, 0.66, c.skin, 0, 1.48, 0], // 머리
+      [0.26, 0.6, 0.27, c.shirt, -0.46, 1.0, 0.2], // 팔(앞으로 뻗음)
+      [0.26, 0.6, 0.27, c.shirt, 0.46, 1.0, 0.2],
+      [0.29, 0.68, 0.32, c.pants, -0.18, 0.34, 0], // 다리
+      [0.29, 0.68, 0.32, c.pants, 0.18, 0.34, 0],
+    ];
+    const col = new THREE.Color();
+    const geos = parts.map(([w, h, dd, color, x, y, z]) => {
+      const g = new THREE.BoxGeometry(w, h, dd).toNonIndexed();
+      g.translate(x, y, z);
+      col.setHex(color);
+      const n = g.attributes.position.count;
+      const arr = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { arr[i * 3] = col.r; arr[i * 3 + 1] = col.g; arr[i * 3 + 2] = col.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+      g.deleteAttribute('uv');
+      return g;
+    });
+    geo = mergeGeometries(geos, false);
+    geos.forEach((g) => g.dispose());
+    geo.scale(d.scale, d.scale, d.scale);
+    geo.userData.shared = true;
+    lodCache.set(type, geo);
+  }
+  const mesh = new THREE.Mesh(geo, lodMat);
+  mesh.visible = false;
+  return mesh;
+}
+
 export function disposeWorld(scene) {
-  const sharedGeometries = new Set([boxGeo, cylGeo, roundGeo, sphereGeo]);
+  const sharedGeometries = new Set([boxGeo, cylGeo, roundGeo, sphereGeo, roundGeoLow, sphereGeoLow]);
   const sharedMaterials = new Set(matCache.values());
   const geometries = new Set();
   const materials = new Set();
   const textures = new Set();
   scene.traverse((o) => {
-    if (o.geometry && !sharedGeometries.has(o.geometry)) geometries.add(o.geometry);
+    if (o.geometry && !sharedGeometries.has(o.geometry) && !o.geometry.userData.shared) geometries.add(o.geometry);
     for (const m of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []) {
-      if (sharedMaterials.has(m)) continue;
+      if (sharedMaterials.has(m) || m.userData.shared) continue;
       materials.add(m);
       for (const value of Object.values(m)) if (value?.isTexture) textures.add(value);
     }
@@ -112,10 +155,13 @@ export function disposeWorld(scene) {
  * 로블록스풍 박스 인간. 키 ≈ 1.8 (scale 곱).
  * 앞(얼굴)은 +Z 방향.
  */
+const BIG = ['boss', 'finalBoss', 'magmaGiant', 'plagueQueen', 'captain'];
+
 export function makeHumanoid(options = {}) {
-  return modelStyle === 'classic'
-    ? makeClassicHumanoid(options, { box, lambert })
-    : makePolishedHumanoid(options);
+  if (modelStyle === 'classic') return makeClassicHumanoid(options, { box, lambert });
+  // 일반 몬스터는 작게 보이므로 저해상도로. 보스·플레이어는 그대로
+  lowDetail = !!options.zombie && !BIG.includes(options.variant);
+  try { return makePolishedHumanoid(options); } finally { lowDetail = false; }
 }
 
 // Keep the outer root: combat, death animation and physics retain their references.
@@ -265,7 +311,8 @@ function makePolishedHumanoid({
       part.add(new THREE.Mesh(geo, material));
     }
   }
-  model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  // 몬스터는 발밑 원형 그림자(blob)가 있으므로 실시간 그림자를 그리지 않는다 (그림자 패스 비용 절감)
+  model.traverse((o) => { if (o.isMesh) { o.castShadow = !zombie; o.receiveShadow = true; } });
   return { root, model, parts: { head, torso, armL, armR, legL, legR, hand }, materials: ownMaterials ? owned : Object.values(mats), eyeMat };
 }
 

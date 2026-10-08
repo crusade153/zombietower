@@ -205,6 +205,8 @@ export class Hud {
   floater(pos, text, color = '#fff', size = 1, ms = 800) {
     tmp.set(pos.x, pos.y, pos.z).project(this.g.camera);
     if (tmp.z > 1) return;
+    // 한꺼번에 많이 맞을 때(필살기·폭발) 숫자가 쌓여 화면이 느려지지 않게 상한
+    if (this.el.floaters.childElementCount > 36) this.el.floaters.firstElementChild.remove();
     const x = (tmp.x * 0.5 + 0.5) * window.innerWidth;
     const y = (-tmp.y * 0.5 + 0.5) * window.innerHeight;
     const d = document.createElement('div');

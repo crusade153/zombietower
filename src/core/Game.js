@@ -450,6 +450,13 @@ export class Game {
       this.acc = 0;
     }
     this.updateView(dt, now);
+    // 태블릿: 그림자 지도를 2프레임(느려지면 3프레임)에 한 번만 갱신해 그림자 패스 비용을 줄인다
+    if (this.touchDevice && this.renderer.shadowMap.enabled) {
+      this._shadowFrame = (this._shadowFrame || 0) + 1;
+      const every = this._frameEma > 0.024 ? 3 : 2;
+      this.renderer.shadowMap.autoUpdate = false;
+      if (this._shadowFrame % every === 0) this.renderer.shadowMap.needsUpdate = true;
+    }
     if (this.state === 'title') {
       this.lobby.update(now, this.reducedMotion);
       this.renderer.render(this.lobby.scene, this.lobby.camera);
@@ -519,6 +526,7 @@ export class Game {
     for (const z of this.zombies) {
       if (z.removed) continue;
       if (!z.climber && Math.abs(z.stageIdx - this.bandStage) > 1) continue;
+      if (this.dormant(z, b)) continue;
       z.update(dt, this);
     }
     this.updateAcids(dt);
@@ -557,6 +565,16 @@ export class Game {
   }
 
   onBodyStep(p) { stepOn(p); }
+
+  /** 멀리서 가만히 서 있는 몬스터는 플레이어가 다가올 때까지 계산을 건너뛴다 */
+  dormant(z, pb) {
+    if (z.dead || z.alerted || z.spotted || z.climber || z.state !== 'idle') return false;
+    const b = z.body;
+    if (!b.grounded || (b.ground && (b.ground.blink || b.ground.motion || b.ground.type === 'falling'))) return false;
+    if (Math.abs(z.kn.x) + Math.abs(z.kn.z) > 0.01 || z.burnT > 0) return false;
+    const dx = b.x - pb.x; const dy = b.y - pb.y; const dz = b.z - pb.z;
+    return dx * dx + dy * dy + dz * dz > 18 * 18;
+  }
 
   // ------------------------------------------------------------------
   // 발판 이벤트
@@ -1614,10 +1632,15 @@ export class Game {
       this.cam.update(this.state === 'play' || this.state === 'dead' ? dt : 0, b, this.input, hint, autoAlign, now, this.state !== 'dead');
     }
     P.syncVisual(dt, this.near(b.y), this.time);
+    const VIEW = 42; // 이보다 먼 일반 몬스터는 그리지 않는다 (보스는 항상)
     for (const z of this.zombies) {
       const active = z.climber || Math.abs(z.stageIdx - this.bandStage) <= 1;
-      z.root.visible = active || z.dead;
-      if (!active && !z.dead) { z.blob.visible = false; z.bar.visible = false; continue; }
+      const zb = z.body;
+      const dx = zb.x - b.x; const dy = zb.y - b.y; const dz = zb.z - b.z;
+      const near = z.def.boss || dx * dx + dy * dy + dz * dz < VIEW * VIEW;
+      const show = near && (active || z.dead);
+      z.root.visible = show;
+      if (!show) { z.blob.visible = false; z.bar.visible = false; continue; }
       z.syncVisual(dt, this);
     }
 

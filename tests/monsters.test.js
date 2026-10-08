@@ -11,7 +11,7 @@ function fakeGame() {
     scene: { add() {}, remove() {} },
     difficulty: { hp: 1, zspeed: 1 },
     groundYAt: () => 0,
-    camera: { quaternion: { x: 0, y: 0, z: 0, w: 1 } },
+    camera: { quaternion: { x: 0, y: 0, z: 0, w: 1 }, position: { x: 0, y: 0, z: 0 } },
     hud: { floater() {}, toast() {} },
     fx: { ring() {}, burst() {} },
     audio: { play() {} },
