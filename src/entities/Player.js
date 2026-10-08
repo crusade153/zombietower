@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PHYS, PLAYER } from '../config/balance.js';
+import { PHYS, PLAYER, ABILITIES } from '../config/balance.js';
 import { WEAPONS } from '../config/weapons.js';
 import { moveAndCollide } from '../core/physics.js';
 import { makeHumanoid, makeBlob, makeWeaponMesh, disposeWorld, replaceHumanoid } from '../world/models.js';
@@ -50,7 +50,13 @@ export class Player {
     this.swing = null; // {t, dur, kind}
     this.weaponKind = null;
     this.weaponMesh = null;
-    this.events = { jumped: false, landed: false };
+    this.events = { jumped: false, landed: false, doubleJumped: false, dashed: false };
+    this.abilities = {}; // { doubleJump, dash } — Game이 저장에서 넣어 준다
+    this.airJumped = false;
+    this.dashUsed = false;
+    this.dashT = 0;
+    this.dashCd = 0;
+    this.dashDir = { x: 0, z: 0 };
     this.lastGround = null;
   }
 
@@ -68,6 +74,8 @@ export class Player {
     this.wasGrounded = false;
     this.coyote = this.jumpBuf = this.faceLock = 0;
     this.jumping = false;
+    this.airJumped = this.dashUsed = false;
+    this.dashT = this.dashCd = 0;
     this.root.visible = true;
     this.root.rotation.set(0, 0, 0);
     if (facing !== null) this.facing = facing;
@@ -123,7 +131,11 @@ export class Player {
     const b = this.body;
     this.events.jumped = false;
     this.events.landed = false;
+    this.events.doubleJumped = false;
+    this.events.dashed = false;
     this.iframes = Math.max(0, this.iframes - dt);
+    this.dashCd = Math.max(0, this.dashCd - dt);
+    if (b.grounded) { this.airJumped = false; this.dashUsed = false; }
 
     const ctl = this.controllable && this.alive;
     const mv = ctl ? input.getMove() : { x: 0, y: 0 };
@@ -155,9 +167,44 @@ export class Player {
       this.jumping = true; this.cutDone = false;
       this.events.jumped = true;
     }
+    else if (ctl && this.jumpBuf > 0 && !b.grounded && this.abilities.doubleJump && !this.airJumped && this.dashT <= 0) {
+      // 2단 점프: 공중에서 한 번 더
+      b.vy = PHYS.jumpSpeed * ABILITIES.doubleJump.jumpMult;
+      this.jumpBuf = 0;
+      this.airJumped = true;
+      this.jumping = true; this.cutDone = false;
+      this.events.doubleJumped = true;
+    }
     if (this.jumping && !input.jumpHeld && b.vy > 0 && !this.cutDone) { b.vy *= PHYS.jumpCut; this.cutDone = true; }
     if (b.vy <= 0) this.jumping = false;
-    b.vy = Math.max(-PHYS.maxFall, b.vy - PHYS.gravity * dt);
+
+    // 대시: 이동 방향(입력 없으면 바라보는 방향)으로 짧게 돌진. 돌진 중에는 중력 없음
+    const dashPressed = input.consumeDash ? input.consumeDash() : false;
+    if (ctl && dashPressed && this.abilities.dash && this.dashCd <= 0 && (b.grounded || !this.dashUsed)) {
+      const D = ABILITIES.dash;
+      let ux = wx; let uz = wz;
+      const ul = Math.hypot(ux, uz);
+      if (ul < 0.1) { ux = Math.sin(this.facing); uz = Math.cos(this.facing); } else { ux /= ul; uz /= ul; }
+      this.dashDir.x = ux; this.dashDir.z = uz;
+      this.dashT = D.time;
+      this.dashCd = D.cooldown;
+      if (!b.grounded) this.dashUsed = true;
+      this.facing = Math.atan2(ux, uz);
+      this.faceLock = D.time;
+      this.events.dashed = true;
+    }
+    if (this.dashT > 0) {
+      this.dashT -= dt;
+      const sp = ABILITIES.dash.speed;
+      b.vx = this.dashDir.x * sp;
+      b.vz = this.dashDir.z * sp;
+      b.vy = Math.max(b.vy, 0);
+      // 돌진이 끝나면 이동 속도로 이어 달린다
+      this.mv.x = this.dashDir.x * PHYS.moveSpeed;
+      this.mv.z = this.dashDir.z * PHYS.moveSpeed;
+    } else {
+      b.vy = Math.max(-PHYS.maxFall, b.vy - PHYS.gravity * dt);
+    }
 
     const prevVy = b.vy;
     moveAndCollide(b, dt, plats);

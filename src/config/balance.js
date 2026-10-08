@@ -88,6 +88,13 @@ export const THRILL = {
   lastSecond: 0.25, // 사라지기 직전 이 시간 안에 뛰어오르면 아슬아슬
 };
 
+// 이동 능력: 대장간에서 코인으로 해금(영구). 타워는 기본 점프만으로도 항상 클리어 가능하다.
+export const ABILITIES = {
+  doubleJump: { name: '2단 점프', icon: '⏫', cost: 250, desc: '공중에서 점프를 한 번 더', jumpMult: 0.85 },
+  dash: { name: '대시', icon: '💨', cost: 450, desc: '이동 방향으로 순간 돌진 (공중에서는 1회)', speed: 17, time: 0.17, cooldown: 0.6 },
+};
+export const ABILITY_IDS = Object.keys(ABILITIES);
+
 // 차지 필살기: 공격 버튼을 time초 이상 누르고 있다가 떼면 발동, 이후 cooldown초 재충전
 export const CHARGE = {
   time: 0.9,

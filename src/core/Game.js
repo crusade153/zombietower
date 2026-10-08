@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { PHYS, LAVA, TOWER, PLAYER, ECON, THRILL, STARS, CHARGE } from '../config/balance.js';
+import { PHYS, LAVA, TOWER, PLAYER, ECON, THRILL, STARS, CHARGE, ABILITIES } from '../config/balance.js';
 import { WEAPONS, RARITY } from '../config/weapons.js';
 import { ZOMBIES, zombieWeights } from '../config/zombies.js';
 import { generateTower } from '../world/TowerGenerator.js';
@@ -142,6 +142,7 @@ export class Game {
     this.lava.setGraphicsStyle(this.save.graphicsStyle);
     this.near = buildNearCache(this.tower, this.lava.floor);
     this.player = new Player(this.scene);
+    this.player.abilities = this.save.abilities;
 
     this.curGround = null;
     this.playerSafe = true;
@@ -474,6 +475,7 @@ export class Game {
 
     // 사망 연출 중에는 입력 불가
     P.controllable = this.state === 'play';
+    P.abilities = this.save.abilities;
     const plats = this.near(b.y);
     P.update(dt, this.input, this.cam, plats);
     if (P.events.jumped) {
@@ -481,6 +483,16 @@ export class Game {
       this.audio.play('jump');
       this.fx.ring(b.x, b.y, b.z, 0.85, 0xc1ffe9, 0.32, true);
       this.fx.burst(b.x, b.y + 0.05, b.z, 0xf8ffea, 6, 1.7, 0.32, 0.09);
+    }
+    if (P.events.doubleJumped) {
+      this.audio.play('jump2');
+      this.fx.ring(b.x, b.y, b.z, 1.2, 0xbfe9ff, 0.3, true);
+      this.fx.burst(b.x, b.y + 0.1, b.z, 0xffffff, 8, 2.4, 0.35, 0.08);
+    }
+    if (P.events.dashed) {
+      this.audio.play('dash');
+      this.fx.burst(b.x, b.y + 0.9, b.z, 0xd8f6ff, 10, 2.5, 0.3, 0.1);
+      this.fx.line(b.x, b.y + 0.9, b.z, b.x - P.dashDir.x * 2.5, b.y + 0.9, b.z - P.dashDir.z * 2.5, 0xffffff, 0.12, 0.2);
     }
     if (P.events.landed) {
       this.audio.play('land');
@@ -1332,6 +1344,22 @@ export class Game {
     this.screens.showForge();
   }
 
+  /** 이동 능력 해금 (대장간) */
+  buyAbility(id) {
+    const a = ABILITIES[id];
+    const s = this.save;
+    if (!a || s.abilities[id] || s.coins < a.cost) return false;
+    s.coins -= a.cost;
+    s.abilities[id] = true;
+    this.player.abilities = s.abilities;
+    this.markDirty(true);
+    this.hud.setCoins(s.coins);
+    this.audio.play('upgrade');
+    const b = this.player.body;
+    this.fx.ring(b.x, b.y + 0.1, b.z, 1.8, 0xbfe9ff, 0.6, true);
+    return true;
+  }
+
   rollChest(k) {
     const boss = k === 5 || k === 10;
     const weapon = rollWeapon(k, Math.random, boss);
@@ -1447,6 +1475,7 @@ export class Game {
     this.hud.setCombo(this.combo.count, this.combo.mult, this.combo.left);
     this.hud.setRun(this.playerSafe ? null : this.run, STARS.maxHits);
     this.hud.setCharge(this.charge / CHARGE.time, this.specialCd / CHARGE.cooldown, !!this.special);
+    this.hud.setDash(this.save.abilities.dash, P.dashCd > 0 || (P.dashUsed && !b.grounded));
     const eq = this.save.equipped.map((u) => (u ? weaponByUid(this.save, u) : null));
     this.hud.renderSlots(eq, this.slot);
     if (this.debug) {

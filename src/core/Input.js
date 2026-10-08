@@ -10,6 +10,7 @@ export class Input {
     this.attackPressed = false;
     this.attackReleased = false; // 실제로 손을 뗀 순간만 (clearAll로는 켜지지 않음)
     this.waterPressed = false;
+    this.dashPressed = false;
     this.slotPressed = -1;
     this.interactPressed = false;
     this.camDX = 0;
@@ -43,6 +44,7 @@ export class Input {
   consumeAttack() { const v = this.attackPressed; this.attackPressed = false; return v; }
   consumeAttackRelease() { const v = this.attackReleased; this.attackReleased = false; return v; }
   consumeWater() { const v = this.waterPressed; this.waterPressed = false; return v; }
+  consumeDash() { const v = this.dashPressed; this.dashPressed = false; return v; }
   consumeSlot() { const v = this.slotPressed; this.slotPressed = -1; return v; }
   consumeCam() { const r = { x: this.camDX, y: this.camDY }; this.camDX = 0; this.camDY = 0; return r; }
 
@@ -50,7 +52,7 @@ export class Input {
     this.dpad.up = this.dpad.down = this.dpad.left = this.dpad.right = false;
     this.keys.clear();
     this.jumpHeld = this.attackHeld = false;
-    this.jumpPressed = this.attackPressed = this.attackReleased = this.waterPressed = false;
+    this.jumpPressed = this.attackPressed = this.attackReleased = this.waterPressed = this.dashPressed = false;
     this.slotPressed = -1;
     this._pointers.clear();
     this.camDX = this.camDY = 0;
@@ -121,6 +123,7 @@ export class Input {
     hold('btn-jump', () => { this.jumpHeld = true; this.jumpPressed = true; }, () => { this.jumpHeld = false; });
     hold('btn-attack', () => { this.attackHeld = true; this.attackPressed = true; }, () => { if (this.attackHeld) this.attackReleased = true; this.attackHeld = false; });
     hold('btn-water', () => { this.waterPressed = true; });
+    hold('btn-dash', () => { this.dashPressed = true; });
     // 무기 슬롯은 동적으로 생성되므로 위임
     document.getElementById('weapon-slots').addEventListener('pointerdown', (e) => {
       const slot = e.target.closest('.slot');
@@ -159,6 +162,7 @@ export class Input {
         case 'Space': this.jumpHeld = true; this.jumpPressed = true; e.preventDefault(); break;
         case 'KeyJ': case 'KeyK': this.attackHeld = true; this.attackPressed = true; break;
         case 'KeyQ': case 'KeyE': this.waterPressed = true; break;
+        case 'ShiftLeft': case 'ShiftRight': case 'KeyL': this.dashPressed = true; break;
         case 'Digit1': this.slotPressed = 0; break;
         case 'Digit2': this.slotPressed = 1; break;
         case 'Digit3': this.slotPressed = 2; break;

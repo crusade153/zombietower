@@ -115,6 +115,15 @@ export class Hud {
     this._set('comboLeft', Math.round(left * 40), (v) => { this.comboEl.querySelector('i').style.width = `${v * 2.5}%`; });
   }
 
+  /** 대시 버튼: 해금해야 보이고, 재사용 대기·공중 사용 후에는 흐리게 */
+  setDash(unlocked, cooling) {
+    const btn = this.dashBtn || (this.dashBtn = document.getElementById('btn-dash'));
+    this._set('dash', `${unlocked}|${cooling}`, () => {
+      btn.classList.toggle('hidden', !unlocked);
+      btn.classList.toggle('empty', cooling);
+    });
+  }
+
   /** 공격 버튼 테두리: 차지 게이지(금색) / 재충전(흰색) / 준비 완료(빛남) */
   setCharge(charge, cool, active) {
     const btn = this.attackBtn || (this.attackBtn = document.getElementById('btn-attack'));
