@@ -22,6 +22,24 @@ export const ZOMBIES = {
     colors: { skin: 0x974635, shirt: 0x493348, pants: 0x332b3d },
     attackRange: 14, windup: 0.5, cooldown: 2.2, knockResist: 0, ranged: true,
   },
+  bomber: {
+    name: '폭탄 망자', hp: 35, dmg: 28, speed: 3.4, coin: 14, scale: 0.95, radius: 0.4, height: 1.75,
+    colors: { skin: 0x7a4a3a, shirt: 0x3a3a46, pants: 0x2a2a35 },
+    attackRange: 1.6, windup: 0.9, cooldown: 1, knockResist: 0,
+    bomber: true, blast: 3.2, // 다가와서 자폭. 처치하면 그 자리에서 폭발해 주변 좀비까지 휩쓴다
+  },
+  shield: {
+    name: '방패 수비대', hp: 90, dmg: 14, speed: 2.2, coin: 22, scale: 1.1, radius: 0.48, height: 1.95,
+    colors: { skin: 0x5d4846, shirt: 0x34404f, pants: 0x262b38 },
+    attackRange: 1.5, windup: 0.5, cooldown: 1.2, knockResist: 0.6,
+    shield: true, turnRate: 2.4, // 정면 공격은 85% 막힘. 천천히 돌아서므로 옆·뒤나 위(점프)에서 공격
+  },
+  golden: {
+    name: '황금 망자', hp: 60, dmg: 0, speed: 4.2, coin: 70, scale: 0.9, radius: 0.38, height: 1.65,
+    colors: { skin: 0xffcf4a, shirt: 0xd9a21b, pants: 0xa8790f },
+    attackRange: 0, windup: 1, cooldown: 1, knockResist: 0,
+    flee: true, fleeTime: 25, // 공격하지 않고 도망친다. 들킨 뒤 25초 안에 못 잡으면 사라짐
+  },
   boss: {
     name: '화산 수문장', hp: 900, dmg: 24, speed: 2.6, coin: 200, scale: 2.4, radius: 1.0, height: 4.3,
     colors: { skin: 0x763d3b, shirt: 0x362335, pants: 0x262235 },
@@ -53,8 +71,13 @@ export function zombieWeights(s) {
     spitter: s >= 4 ? 1 + (s - 3) * 0.7 : 0,
     brute: s >= 6 ? (s - 5) * 4 : 0,
     warlock: s >= 8 ? (s - 7) * 5 : 0,
+    bomber: s >= 2 ? 1.5 + (s - 2) * 0.6 : 0,
+    shield: s >= 3 ? 1.5 + (s - 3) * 0.6 : 0,
   };
 }
+// 황금 망자: 2층부터 층마다 이 확률로 한 마리
+export const goldenChance = (s) => (s >= 2 ? 0.55 : 0);
+
 export const hpScale = (s) => 1 + 0.18 * (s - 1);
 export const dmgScale = (s) => 1 + 0.1 * (s - 1);
 export const coinScale = (s) => ECON.zombieRewardMult * (1 + 0.25 * (s - 1));

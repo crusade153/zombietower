@@ -4,6 +4,7 @@ import {
   weaponDamage, weaponName, upgradeCost, canUpgrade, sellPrice, weaponDps, perks, chestOdds, weaponAppearance,
 } from '../combat/Weapons.js';
 import { weaponByUid, normalizeSave, writeSave } from '../core/Save.js';
+import { formatTime, starCount } from '../core/StageRun.js';
 import { icon } from './icons.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -148,10 +149,13 @@ export class Screens {
         <p class="hint">클리어한 층의 안전구역으로 이동합니다.<br>무기와 코인은 그대로 유지됩니다.</p>
         <div class="floor-grid">${Array.from({ length: 11 }, (_, k) => {
           const unlocked = k <= s.lastSafe;
-          return `<button class="floor-button${k === this.g.safeIdx ? ' current' : ''}" data-act="floor-go" data-floor="${k}" ${unlocked ? '' : 'disabled'}><b>${k === 0 ? '출발' : `${k}층`}</b><small>${unlocked ? (k === 0 ? '1층부터 도전' : k === 10 ? '정상 안전구역' : `${k + 1}층부터 도전`) : '아직 잠김'}</small></button>`;
+          const next = k + 1;
+          const mask = next <= 10 ? s.stars[next] || 0 : 0;
+          const stars = next <= 10 ? `<span class="floor-stars">${[1, 2, 4].map((b) => (mask & b ? '★' : '☆')).join('')}${s.bestTimes[next] ? ` · ${formatTime(s.bestTimes[next])}` : ''}</span>` : '';
+          return `<button class="floor-button${k === this.g.safeIdx ? ' current' : ''}" data-act="floor-go" data-floor="${k}" ${unlocked ? '' : 'disabled'}><b>${k === 0 ? '출발' : `${k}층`}</b><small>${unlocked ? (k === 0 ? '1층부터 도전' : k === 10 ? '정상 안전구역' : `${next}층부터 도전`) : '아직 잠김'}</small>${unlocked ? stars : ''}</button>`;
         }).join('')}</div>
         ${s.bossSanctuaryUnlocked ? '<button class="btn green" data-act="boss-go">최종 보스 직전 안전구역</button>' : ''}
-        <p class="hint">최고 클리어 ${s.lastSafe}층 · 층 클리어 보상은 최초 1회 지급</p>
+        <p class="hint">최고 클리어 ${s.lastSafe}층 · 별 ${s.stars.reduce((a, m) => a + starCount(m), 0)}/30<br>다시 도전하면 좀비·공중 코인이 되살아납니다. 별 보상은 별마다 처음 한 번 지급</p>
         <button class="btn sub" data-act="floor-back">돌아가기</button>
       </div>`);
   }

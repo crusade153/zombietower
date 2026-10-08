@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { PHYS, LAVA, TOWER, PLAYER, ECON, THRILL } from '../config/balance.js';
+import { PHYS, LAVA, TOWER, PLAYER, ECON, THRILL, STARS } from '../config/balance.js';
 import { WEAPONS, RARITY } from '../config/weapons.js';
 import { ZOMBIES, zombieWeights } from '../config/zombies.js';
 import { generateTower } from '../world/TowerGenerator.js';
@@ -24,6 +24,7 @@ import {
   def as wdef, weaponDamage, hasPerk, upgradeCost, canUpgrade, sellValue, sellPrice, rollWeapon,
 } from '../combat/Weapons.js';
 import { Combo, LavaEscape, rollCrit } from '../combat/Thrills.js';
+import { StageRun } from './StageRun.js';
 import { Hud } from '../ui/Hud.js';
 import { Screens } from '../ui/Screens.js';
 import { makeRng } from './rng.js';
@@ -153,6 +154,7 @@ export class Game {
     this.deadT = 0;
     this.bandStage = 0;
     this.finalBattle = false;
+    this.run = null; // 현재 층 도전 기록(별)
 
     this.spawnStaticPickups();
     this.spawnZombies();
@@ -313,14 +315,12 @@ export class Game {
   restartFromFloor(k, bossPrep = false) {
     if (!['title', 'paused'].includes(this.state) || !Number.isInteger(k) || k < 0 || k > this.save.lastSafe) return false;
     if (bossPrep && !this.save.bossSanctuaryUnlocked) return false;
-    this.flushSave();
-    for (const a of this.acids) { this.scene.remove(a.mesh); disposeWorld(a.mesh); }
-    this.acids = [];
     this.save.resumeSafe = k;
     this.save.resumeAtBoss = bossPrep;
-    this.resetToSafe(k, bossPrep ? this.tower.bossSanctuary : undefined);
-    this.input.clearAll();
     this.markDirty(true);
+    // 다시 도전: 좀비·공중 코인·회복 아이템이 되살아난 타워로 다시 만든다
+    this.buildWorld();
+    this.input.clearAll();
     this.screens.hide();
     this.startRun(true);
     return true;
@@ -510,6 +510,7 @@ export class Game {
     }
     this.combo.update(dt);
     this.nearT = Math.max(0, this.nearT - dt);
+    if (this.run && !this.playerSafe) this.run.t += dt;
     this.updateLavaAmbience(dt);
     this.updateClimbers(dt);
     this.updateContext();
@@ -546,6 +547,7 @@ export class Game {
       this.enterSafe(p);
     } else {
       this.playerSafe = false;
+      if (p.stage >= 1 && (!this.run || this.run.stage !== p.stage)) this.startStageRun(p.stage);
       if (this.lava.state === 'idle') {
         const stage = Math.max(1, p.stage);
         const speed = (LAVA.speedBase + LAVA.speedPerStage * (stage - 1)) * this.difficulty.lava;
@@ -615,6 +617,38 @@ export class Game {
     } else {
       this.markDirty();
     }
+    this.finishStageRun(k);
+  }
+
+  startStageRun(stage) {
+    const st = this.tower.stages.find((x) => x.index === stage);
+    if (!st) return;
+    this.run = new StageRun(stage, st.platforms.length, !!st.boss, st.aircoins.length);
+  }
+
+  /** 층 결과: 별 판정 → 새 별 보상 → 결과 카드 */
+  finishStageRun(k) {
+    const r = this.run;
+    if (!r || r.stage !== k) return;
+    this.run = null;
+    const s = this.save;
+    const res = r.settle(s.stars[k] || 0);
+    s.stars[k] = res.total;
+    const prevBest = s.bestTimes[k] || 0;
+    const newBest = !prevBest || r.t < prevBest;
+    if (newBest) s.bestTimes[k] = Math.round(r.t * 10) / 10;
+    if (res.reward) {
+      s.coins += res.reward;
+      this.hud.setCoins(s.coins);
+    }
+    this.markDirty(true);
+    this.hud.showStageResult({
+      stage: k, t: r.t, par: r.par, hits: r.hits, air: r.air, airTotal: r.airTotal,
+      airNeed: Math.ceil(r.airTotal * STARS.airRate), maxHits: STARS.maxHits,
+      mask: res.mask, total: res.total, gained: res.gained, reward: res.reward,
+      best: s.bestTimes[k], newBest: newBest && !!prevBest,
+    });
+    if (res.gained) this.audio.play('star');
   }
 
   // ------------------------------------------------------------------
@@ -627,6 +661,7 @@ export class Game {
     this.state = 'dead';
     this.deadT = 1.6;
     this.stats.deaths++;
+    if (this.run) this.run.hits++;
     this.combo.reset();
     this.lavaEscape.reset();
     this.audio.play('die');
@@ -873,10 +908,19 @@ export class Game {
 
   hitZombie(z, dmg, o) {
     const zb = z.body;
+    const pb = this.player.body;
+    o.fromAbove = !pb.grounded && pb.y > zb.y + 0.6; // 점프해서 위에서 치면 방패를 넘는다
     const crit = rollCrit();
     if (crit) dmg *= THRILL.critMult;
     const killed = z.takeDamage(this, dmg, o);
     const top = { x: zb.x, y: zb.y + z.def.height + 0.3, z: zb.z };
+    if (o.blocked) {
+      this.hud.floater(top, `막힘 ${Math.round(dmg * 0.15)}`, '#b9cadb', 1);
+      this.fx.burst(zb.x + Math.sin(z.facing) * 0.6, zb.y + z.def.height * 0.5, zb.z + Math.cos(z.facing) * 0.6, 0xe8f4ff, 5, 4, 0.25, 0.08);
+      if (this.time - (this._blockSfxT ?? -1) > 0.08) { this._blockSfxT = this.time; this.audio.play('block'); }
+      if (!this._blockTip) { this._blockTip = true; this.hud.toast('🛡 방패에 막혔다! 옆·뒤로 돌거나 점프해서 공격', 2200); }
+      return;
+    }
     if (crit) {
       this.hud.floater(top, `치명타 ${Math.round(dmg)}`, '#ffb020', 1.6, 900);
       this.fx.burst(zb.x, zb.y + z.def.height * 0.6, zb.z, 0xffd04a, 9, 5.5, 0.4, 0.13);
@@ -889,6 +933,51 @@ export class Game {
     }
     this.fx.burst(zb.x, zb.y + z.def.height * 0.6, zb.z, 0x6fa05a, 4, 3.5, 0.35, 0.12);
     this.audio.playImpact(o.weapon || this.currentWeapon, killed);
+  }
+
+  /** 폭탄 망자 폭발. self: 스스로 자폭(범위 전체), 아니면 처치당해 터짐(플레이어 피해 범위·피해 축소) */
+  explode(src, self) {
+    const b = src.body;
+    const R = src.def.blast;
+    src.exploded = true;
+    this.audio.play('boom');
+    this.fx.burst(b.x, b.y + 0.8, b.z, 0xff7a1a, 22, 8, 0.7, 0.16);
+    this.fx.burst(b.x, b.y + 0.8, b.z, 0x3a3340, 12, 5, 0.9, 0.2);
+    this.fx.ring(b.x, b.y + 0.05, b.z, R, 0xffb04a, 0.35, true);
+    this.cam.shake = Math.max(this.cam.shake, 0.7);
+    this.addHitstop(0.08);
+    const dmg = src.dmg * 4;
+    for (const z of this.zombies) {
+      if (z === src || z.dead || z.removed) continue;
+      const zb = z.body;
+      const dx = zb.x - b.x;
+      const dz = zb.z - b.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > R + z.def.radius || Math.abs(zb.y - b.y) > 2.5) continue;
+      const l = dist || 1;
+      const killed = z.takeDamage(this, dmg, { kx: dx / l, kz: dz / l, knock: 10, blast: true });
+      this.hud.floater({ x: zb.x, y: zb.y + z.def.height + 0.3, z: zb.z }, Math.round(dmg), killed ? '#ffd04a' : '#ffb070', 1.2);
+    }
+    const P = this.player;
+    const pb = P.body;
+    if (P.alive && Math.hypot(pb.x - b.x, pb.z - b.z) < (self ? R : R * 0.7) && Math.abs(pb.y - b.y) < 2) {
+      const pd = src.dmg * (self ? 1 : 0.6);
+      if (P.hurt(pd, b.x, b.z, 12)) this.onPlayerHurt(pd);
+    }
+  }
+
+  onGoldenSpotted() {
+    this.hud.toast('💰 황금 망자 발견! 도망가기 전에 잡아라', 1800);
+    this.audio.play('gold');
+  }
+
+  onGoldenEscaped(z) {
+    const b = z.body;
+    this.fx.burst(b.x, b.y + 1, b.z, 0xffd24a, 16, 4, 0.8, 0.12);
+    z.die(this, { silent: true });
+    z.dying = 1.2; // 쓰러지지 않고 바로 사라짐
+    z.root.visible = false;
+    this.hud.toast('황금 망자가 사라졌다…', 1400);
   }
 
   addHitstop(t) {
@@ -945,6 +1034,11 @@ export class Game {
       this.spawnCoin(zb.x, zb.y + 0.8, zb.z, v);
     }
     if (w && hasPerk(w, 'lifesteal')) this.player.heal(6);
+    if (z.def.flee) {
+      this.hud.floater({ x: zb.x, y: zb.y + z.def.height + 0.8, z: zb.z }, `💰 황금 망자 +${total}`, '#ffd84a', 1.5, 1300);
+      this.fx.confetti(zb.x, zb.y + 1, zb.z);
+      this.audio.play('gold');
+    }
     if (Math.random() < 0.08 + (z.def.boss ? 1 : 0)) {
       const mesh = makeHealPickup();
       this.scene.add(mesh);
@@ -1054,6 +1148,7 @@ export class Game {
           this.hud.setCoins(this.save.coins);
           this.audio.play('coin');
           this.fx.burst(it.x, it.y, it.z, 0xffd24a, 5, 3, 0.35, 0.1);
+          if (this.run && it.stage === this.run.stage) this.run.air++;
         }
       } else {
         it.mesh.rotation.y += dt * 2;
@@ -1079,6 +1174,7 @@ export class Game {
   }
 
   onPlayerHurt(dmg) {
+    if (this.run) this.run.hits++;
     this.audio.play('hurt');
     this.cam.shake = Math.max(this.cam.shake, 0.5);
     const b = this.player.body;
@@ -1306,6 +1402,7 @@ export class Game {
     this.hud.setWater(this.water.charges, this.lava.state !== 'idle' && this.water.cd <= 0);
     this.hud.setCoins(this.save.coins);
     this.hud.setCombo(this.combo.count, this.combo.mult, this.combo.left);
+    this.hud.setRun(this.playerSafe ? null : this.run, STARS.maxHits);
     const eq = this.save.equipped.map((u) => (u ? weaponByUid(this.save, u) : null));
     this.hud.renderSlots(eq, this.slot);
     if (this.debug) {

@@ -189,6 +189,11 @@ export class AudioSys {
       case 'crit': this._noise(0.05, 0.4, 7000, 3000, 'highpass'); this._tone(1600, 900, 0.1, 'triangle', 0.2); this._tone(170, 45, 0.2, 'sine', 0.45); break;
       case 'combo': [660, 880, 1175].forEach((f, i) => this._tone(f, f * 1.02, 0.1, 'square', 0.11, i * 0.06)); break;
       case 'nearmiss': this._noise(0.28, 0.3, 700, 4200, 'bandpass'); this._tone(988, 988, 0.1, 'triangle', 0.17, 0.1); this._tone(1480, 1480, 0.18, 'triangle', 0.17, 0.18); break;
+      case 'boom': this._noise(0.6, 0.75, 900, 50, 'lowpass'); this._tone(95, 28, 0.5, 'sine', 0.7); this._noise(0.12, 0.4, 4000, 800, 'bandpass'); break;
+      case 'fuse': [0, 0.16, 0.3, 0.42, 0.52, 0.6, 0.67].forEach((d) => this._tone(1400, 1400, 0.03, 'square', 0.07, d)); this._noise(0.75, 0.12, 6000, 3000, 'highpass'); break;
+      case 'block': this._tone(950, 640, 0.09, 'triangle', 0.2); this._tone(1900, 1500, 0.06, 'triangle', 0.08); this._noise(0.05, 0.3, 5000, 2500, 'highpass'); break;
+      case 'gold': [1046, 1318, 1568, 2093].forEach((f, i) => this._tone(f, f, 0.12, 'triangle', 0.13, i * 0.05)); break;
+      case 'star': [784, 988, 1175, 1568].forEach((f, i) => this._tone(f, f * 1.01, 0.2, 'triangle', 0.18, i * 0.11)); break;
       case 'coin': this._tone(880, 880, 0.07, 'square', 0.1); this._tone(1320, 1320, 0.12, 'square', 0.1, 0.07); break;
       case 'heal': this._tone(520, 1040, 0.25, 'sine', 0.2); break;
       case 'hurt': this._tone(200, 70, 0.25, 'sawtooth', 0.28); this._noise(0.12, 0.3, 700, 150, 'lowpass'); break;

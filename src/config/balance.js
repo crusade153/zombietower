@@ -88,6 +88,15 @@ export const THRILL = {
   lastSecond: 0.25, // 사라지기 직전 이 시간 안에 뛰어오르면 아슬아슬
 };
 
+// 층별 별 3개: ⏱ 목표 시간 안에 · 💔 피격 maxHits회 이하 · 💰 공중 코인 airRate 이상.
+// 별마다 처음 딸 때만 reward 지급. 이미 클리어한 층은 다시 도전하면 좀비·공중 코인이 되살아난다.
+export const STARS = {
+  parTime: (platforms, boss) => Math.round(platforms * 2 + (boss ? 50 : 0)), // 초
+  maxHits: 3,
+  airRate: 0.8,
+  reward: (stage) => 25 + 12 * stage,
+};
+
 // [일반, 레어, 에픽, 신화, 전설, 천상, 무적]. 최상위도 1층부터 획득 가능.
 export const CHEST_ODDS = {
   first: [25, 20, 18, 12, 10, 8, 7],

@@ -40,6 +40,8 @@ export class Zombie {
     this.jumpCd = 0;
     this.growlT = 2 + Math.random() * 5;
     this.phase = 1;
+    this.exploded = false; // 폭탄 망자
+    this.spotted = false; this.fleeT = 0; // 황금 망자
 
     const h = makeHumanoid({
       skin: d.colors.skin, shirt: d.colors.shirt, pants: d.colors.pants, scale: d.scale, zombie: true, ownMaterials: true, variant: type,
@@ -49,6 +51,7 @@ export class Zombie {
     this.parts = h.parts;
     this.parts.armL.rotation.x = -1.4;
     this.parts.armR.rotation.x = -1.4;
+    this.addGear();
     game.scene.add(this.root);
     this.blob = makeBlob(d.radius * 1.3);
     game.scene.add(this.blob);
@@ -75,16 +78,61 @@ export class Zombie {
       scale: d.scale, zombie: true, ownMaterials: true, variant: this.type,
     });
     this.parts = this.h.parts;
+    this.addGear();
+  }
+
+  /** 변종 장비: 폭탄(등)·방패(앞)·왕관(황금). 두 그래픽 스타일 공통으로 몸통/머리에 붙인다 */
+  addGear() {
+    const d = this.def;
+    this.spark = null;
+    if (!d.bomber && !d.shield && !d.flee) return;
+    const mat = (color, emissive = 0, metalness = 0) => {
+      const m = new THREE.MeshStandardMaterial({ color, emissive, roughness: 0.45, metalness });
+      m.userData.baseEmissive = m.emissive.clone();
+      this.h.materials.push(m);
+      return m;
+    };
+    const add = (parent, geo, m, x, y, z) => {
+      const mesh = new THREE.Mesh(geo, m);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      parent.add(mesh);
+      return mesh;
+    };
+    const t = this.parts.torso;
+    if (d.bomber) {
+      add(t, new THREE.SphereGeometry(0.32, 16, 12), mat(0x2b2b33, 0, 0.3), 0, 0.05, -0.44);
+      add(t, new THREE.CylinderGeometry(0.035, 0.035, 0.2, 6), mat(0x8a6a4a), 0, 0.42, -0.44);
+      this.spark = add(t, new THREE.SphereGeometry(0.08, 8, 6), mat(0xffc04a, 0xff6a10), 0, 0.54, -0.44);
+    }
+    if (d.shield) {
+      add(t, new THREE.BoxGeometry(0.98, 1.08, 0.1), mat(0x9fb4c8, 0x0c1420, 0.6), 0, -0.12, 0.46);
+      add(t, new THREE.BoxGeometry(0.26, 0.26, 0.06), mat(0xffd854, 0x302000, 0.4), 0, 0, 0.53);
+    }
+    if (d.flee) {
+      for (const m of this.h.materials) {
+        m.emissive.setHex(0x4a3200);
+        m.userData.baseEmissive = m.emissive.clone();
+      }
+      add(this.parts.head, new THREE.CylinderGeometry(0.26, 0.22, 0.16, 8), mat(0xffd84a, 0x6a4a00, 0.7), 0, 0.42, 0);
+    }
   }
 
   takeDamage(g, dmg, o = {}) {
     if (this.dead) return false;
     if (this.def.finalBoss && !g.finalBattle) return false;
+    if (this.def.shield && !o.blast && !o.fromAbove && o.kx !== undefined) {
+      // 공격 방향(공격자→좀비)이 방패 정면이면 대부분 막는다
+      const fx = Math.sin(this.facing);
+      const fz = Math.cos(this.facing);
+      if (-((o.kx || 0) * fx + (o.kz || 0) * fz) > 0.45) { dmg *= 0.15; o.blocked = true; }
+    }
     this.hp -= dmg;
     this.flashT = 0.12;
-    this.alerted = true;
+    this.alerted = !this.def.flee;
+    if (this.def.flee && !this.spotted) { this.spotted = true; this.fleeT = 0; }
     if (o.knock) {
-      const k = o.knock * (1 - this.def.knockResist);
+      const k = o.knock * (1 - this.def.knockResist) * (o.blocked ? 0.3 : 1);
       this.kn.x += (o.kx || 0) * k;
       this.kn.z += (o.kz || 0) * k;
       if (k > 1) this.body.vy = Math.max(this.body.vy, 3.5 * (1 - this.def.knockResist));
@@ -104,6 +152,7 @@ export class Zombie {
     this.bar.visible = false;
     g.audio.play('zdie');
     if (!o.silent) g.onZombieKilled(this, o);
+    if (this.def.bomber && !this.exploded && !o.silent) g.explode(this, false);
   }
 
   resetForBattle() {
@@ -124,6 +173,7 @@ export class Zombie {
     const b = this.body;
     const P = g.player;
     const pb = P.body;
+    const facing0 = this.facing;
 
     if (this.dead) {
       this.dying += dt;
@@ -164,7 +214,7 @@ export class Zombie {
     const dy = pb.y - b.y;
     const playerOk = P.alive && !g.playerSafe;
 
-    if (!this.alerted && playerOk && dist < 14 && Math.abs(dy) < 6) {
+    if (!this.def.flee && !this.alerted && playerOk && dist < 14 && Math.abs(dy) < 6) {
       this.alerted = true;
       g.audio.play('zgrowl');
     }
@@ -173,7 +223,11 @@ export class Zombie {
     const speed = this.def.speed * (this.phase === 2 ? 1.25 : 1) * (this.slowT > 0 ? 0.55 : 1) * g.difficulty.zspeed;
     let wantX = 0; let wantZ = 0;
 
-    if (this.state === 'windup') {
+    if (this.def.flee) {
+      const r = this.fleeMove(g, b, dx, dz, dist, dy, playerOk, speed, dt);
+      if (this.dead) return;
+      wantX = r.x; wantZ = r.z;
+    } else if (this.state === 'windup') {
       this.timer -= dt;
       this.facing = Math.atan2(dx, dz);
       if (this.timer <= 0) this.resolveAttack(g, dx, dz, dist, dy);
@@ -188,6 +242,10 @@ export class Zombie {
         this.state = 'windup';
         this.attackKind = 'melee';
         this.timer = this.def.windup;
+        if (this.def.bomber) {
+          g.fx.ring(b.x, b.y + 0.05, b.z, this.def.blast, 0xff3a2a, this.timer, true);
+          g.audio.play('fuse');
+        }
         if (this.def.boss) {
           if (dist > this.def.attackRange - 0.4 && dist <= 9) this.attackKind = 'slam';
           else if (Math.random() < 0.4) this.attackKind = 'slam';
@@ -234,6 +292,12 @@ export class Zombie {
       if (dl <= acc) { this.mv.x = wantX; this.mv.z = wantZ; } else { this.mv.x += (ddx / dl) * acc; this.mv.z += (ddz / dl) * acc; }
       this.air = null;
     }
+    if (this.def.turnRate) {
+      // 방패 수비대는 천천히 돌아선다 → 빠르게 돌아 들어가면 옆·뒤를 칠 수 있다
+      const df = Math.atan2(Math.sin(this.facing - facing0), Math.cos(this.facing - facing0));
+      const lim = this.def.turnRate * dt;
+      this.facing = facing0 + Math.max(-lim, Math.min(lim, df));
+    }
     const kd = Math.exp(-6 * dt);
     this.kn.x *= kd; this.kn.z *= kd;
     if (this.air) { b.vx = this.air.vx + this.kn.x; b.vz = this.air.vz + this.kn.z; }
@@ -243,6 +307,30 @@ export class Zombie {
 
     this.growlT -= dt;
     if (this.growlT <= 0 && this.alerted && dist < 18) { g.audio.play('zgrowl'); this.growlT = 4 + Math.random() * 5; }
+  }
+
+  /** 황금 망자: 들키면 플레이어 반대쪽으로 도망. 발판 끝이면 옆으로 비켜 간다 */
+  fleeMove(g, b, dx, dz, dist, dy, playerOk, speed, dt) {
+    if (this.spotted) {
+      this.fleeT += dt;
+      if (this.fleeT > this.def.fleeTime) { g.onGoldenEscaped(this); return { x: 0, z: 0 }; }
+      if (Math.random() < dt * 10) g.fx.burst(b.x, b.y + 1, b.z, 0xffd24a, 1, 1.5, 0.5, 0.08);
+    }
+    if (!playerOk || dist > 11 || Math.abs(dy) > 4) return { x: 0, z: 0 };
+    if (!this.spotted) { this.spotted = true; this.fleeT = 0; }
+    if (!this.announced) { this.announced = true; g.onGoldenSpotted(this); }
+    const base = Math.atan2(-dx, -dz);
+    const plats = g.near(b.y);
+    for (const off of [0, 0.7, -0.7, 1.4, -1.4, 2.1, -2.1]) {
+      const a = base + off;
+      const ux = Math.sin(a);
+      const uz = Math.cos(a);
+      if (groundBelow(b.x + ux * (b.hw + 0.6), b.y, b.z + uz * (b.hw + 0.6), plats, 1.6, 0.15)) {
+        this.facing = a;
+        return { x: ux * speed, z: uz * speed };
+      }
+    }
+    return { x: 0, z: 0 };
   }
 
   sameBand(P) {
@@ -310,6 +398,11 @@ export class Zombie {
       }
       return;
     }
+    if (d.bomber) {
+      g.explode(this, true);
+      this.die(g, { silent: true });
+      return;
+    }
     if (d.ranged) {
       g.audio.play('spit');
       g.spawnAcid(b.x, b.y + d.height * 0.8, b.z, g.player.body, this.dmg);
@@ -348,6 +441,12 @@ export class Zombie {
     const f = this.flashT > 0 ? 0.7 : 0;
     for (const m of this.h.materials) m.emissive.copy(m.userData.baseEmissive || new THREE.Color()).addScalar(f);
     if (this.burnT > 0) for (const m of this.h.materials) m.emissive.setRGB(0.5, 0.18, 0);
+    if (this.def.bomber) {
+      // 도화선: 평소엔 천천히, 자폭 준비 중엔 빠르게 붉게 번쩍
+      const lit = this.state === 'windup';
+      if (lit && Math.sin(this.timer * 38) > 0) for (const m of this.h.materials) m.emissive.setRGB(0.9, 0.12, 0.05);
+      if (this.spark) this.spark.scale.setScalar(1 + 0.35 * Math.sin(this.animT * (lit ? 30 : 8)));
+    }
     // 체력바
     const hurt = this.hp < this.maxHp;
     this.bar.visible = hurt || this.def.boss;

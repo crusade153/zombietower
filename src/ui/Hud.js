@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { WEAPONS, RARITY } from '../config/weapons.js';
+import { STARS } from '../config/balance.js';
 import { icon } from './icons.js';
+import { formatTime, starCount } from '../core/StageRun.js';
 
 const tmp = new THREE.Vector3();
 
@@ -29,6 +31,14 @@ export class Hud {
     this.comboEl.className = 'hidden';
     this.comboEl.innerHTML = '<b></b><span>콤보</span><em></em><div class="combo-track"><i></i></div>';
     $('hud-left').appendChild(this.comboEl);
+    this.runEl = document.createElement('div');
+    this.runEl.id = 'run-line';
+    this.runEl.className = 'hidden';
+    $('hud-center').appendChild(this.runEl);
+    this.resultEl = document.createElement('div');
+    this.resultEl.id = 'stage-result';
+    this.el.hud.appendChild(this.resultEl);
+    this._resultT = null;
     this.el.pause.innerHTML = icon('pause');
     this.el.pause.title = '일시정지';
     document.querySelector('.lava-ico').innerHTML = icon('flame');
@@ -103,6 +113,39 @@ export class Hud {
       this.comboEl.classList.add('pop');
     });
     this._set('comboLeft', Math.round(left * 40), (v) => { this.comboEl.querySelector('i').style.width = `${v * 2.5}%`; });
+  }
+
+  /** 층 도전 중: 시간/목표 · 피격 · 공중 코인 */
+  setRun(run, maxHits) {
+    const key = run ? `${Math.floor(run.t)}|${run.hits}|${run.air}|${run.par}` : '';
+    this._set('run', key, () => {
+      this.runEl.classList.toggle('hidden', !run);
+      if (!run) return;
+      const over = run.t > run.par;
+      const hitOver = run.hits > maxHits;
+      const need = Math.ceil(run.airTotal * STARS.airRate);
+      this.runEl.innerHTML = `<span class="${over ? 'bad' : ''}">⏱ ${formatTime(run.t)}/${formatTime(run.par)}</span>`
+        + `<span class="${hitOver ? 'bad' : ''}">💔 ${run.hits}/${maxHits}</span>`
+        + (run.airTotal ? `<span class="${run.air >= need ? 'good' : ''}">💰 ${run.air}/${need}</span>` : '');
+    });
+  }
+
+  /** 층 결과 카드 (몇 초 뒤 자동으로 사라짐) */
+  showStageResult(r) {
+    const row = (ok, text) => `<li class="${ok ? 'ok' : 'no'}">${ok ? '★' : '☆'} ${text}</li>`;
+    const gainedN = starCount(r.gained);
+    this.resultEl.innerHTML = `
+      <h3>${r.stage}층 결과</h3>
+      <div class="stars">${[1, 2, 4].map((b) => `<span class="${r.total & b ? 'on' : ''}${r.gained & b ? ' new' : ''}">★</span>`).join('')}</div>
+      <ul>
+        ${row(r.mask & 1, `시간 ${formatTime(r.t)} / 목표 ${formatTime(r.par)}${r.newBest ? ' · 최고 기록!' : ''}`)}
+        ${row(r.mask & 2, `피격 ${r.hits}회 (${r.maxHits}회 이하)`)}
+        ${row(r.mask & 4, r.airTotal ? `공중 코인 ${r.air}/${r.airTotal} (${r.airNeed}개 이상)` : '공중 코인 없음')}
+      </ul>
+      <p>${gainedN ? `새 별 ${gainedN}개 · <b>+${r.reward} 코인</b>` : `누적 별 ${starCount(r.total)}/3${starCount(r.total) < 3 ? ' · 다시 도전해 나머지 별을 모아보세요' : ' · 완벽!'}`}</p>`;
+    this.resultEl.classList.add('show');
+    clearTimeout(this._resultT);
+    this._resultT = setTimeout(() => this.resultEl.classList.remove('show'), 5500);
   }
 
   setVignette(v) { this._set('vig', Math.round(v * 20), () => { this.el.vignette.style.opacity = v.toFixed(2); }); }

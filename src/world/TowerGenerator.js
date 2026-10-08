@@ -1,7 +1,7 @@
 import { TOWER, ECON } from '../config/balance.js';
 import { makeRng } from '../core/rng.js';
 import { maxReach, maxJumpHeight, setBounds, aabbDistXZ, extremes } from '../core/physics.js';
-import { zombieWeights } from '../config/zombies.js';
+import { zombieWeights, goldenChance } from '../config/zombies.js';
 import { themeForStage } from '../config/themes.js';
 
 const MIN_GAP = 0.45; // 발판 사이 최소 간격(너무 붙으면 점프가 아니라 걷기)
@@ -350,6 +350,10 @@ function populateStage(stage, rng) {
       });
       n++;
     }
+  }
+  if (pool.length && rng() < goldenChance(s)) {
+    const p = pool.splice(rng.int(0, pool.length - 1), 1)[0];
+    stage.zombies.push({ type: 'golden', platform: p, x: p.x, y: p.maxY, z: p.z });
   }
   if (stage.boss) {
     const arena = plats[plats.length - 1];

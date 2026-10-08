@@ -18,6 +18,8 @@ function freshSave() {
     resumeAtBoss: false,
     finalBossDefeated: false,
     openedChests: [], // 연 상자의 안전구역 번호
+    stars: Array(11).fill(0), // 층별 별 비트(1 시간·2 피격·4 공중 코인), 인덱스 = 층
+    bestTimes: Array(11).fill(0), // 층별 최고 기록(초), 0 = 없음
     best: 0,
     muted: false,
     graphicsStyle: 'polished',
@@ -67,6 +69,11 @@ export function normalizeSave(raw) {
   if (!equipped.size) s.equipped[0] = s.weapons[0].uid;
   s.openedChests = [...new Set((Array.isArray(raw.openedChests) ? raw.openedChests : []).map(value => integer(value)).filter(k => k >= 1 && k <= 10))];
   s.rarityVersion = 2;
+  s.stars = Array.from({ length: 11 }, (_, k) => (k >= 1 ? clamp(raw.stars?.[k], 0, 7) : 0));
+  s.bestTimes = Array.from({ length: 11 }, (_, k) => {
+    const t = Number(raw.bestTimes?.[k]);
+    return k >= 1 && Number.isFinite(t) && t > 0 ? Math.round(t * 10) / 10 : 0;
+  });
   s.finalBossDefeated = !!raw.finalBossDefeated || (!raw.rarityVersion && !!raw.cleared);
   s.bossSanctuaryUnlocked = !!raw.bossSanctuaryUnlocked;
   s.resumeAtBoss = !!raw.resumeAtBoss && s.bossSanctuaryUnlocked;
