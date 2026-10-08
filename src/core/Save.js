@@ -6,6 +6,7 @@ function freshSave() {
   return {
     v: 1,
     rarityVersion: 2,
+    econVersion: 2, // 2: 코인 가치 상향(보상 축소·강화비 인상)
     seed: (Math.random() * 1e9) | 0,
     coins: 0,
     nextUid: 2,
@@ -37,6 +38,9 @@ export function normalizeSave(raw) {
   s.loop = Math.max(0, integer(raw.loop));
   s.seed = integer(raw.seed, defaults.seed);
   s.coins = Math.max(0, integer(raw.coins));
+  // 경제 개편 이전 저장의 코인은 새 가치에 맞게 1/8로 환산
+  if (!raw.econVersion) s.coins = Math.floor(s.coins / 8);
+  s.econVersion = 2;
   s.lastSafe = clamp(raw.lastSafe, 0, 10);
   s.resumeSafe = clamp(raw.resumeSafe ?? s.lastSafe, 0, s.lastSafe);
   s.best = Math.max(s.lastSafe, clamp(raw.best, 0, 10));

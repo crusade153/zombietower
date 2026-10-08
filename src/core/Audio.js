@@ -186,6 +186,9 @@ export class AudioSys {
       case 'shotgun': this._noise(0.065, 0.65, 5000, 600, 'highpass'); this._tone(150, 32, 0.27, 'sine', 0.6); this._noise(0.25, 0.4, 1600, 90, 'lowpass', 0.025); this._tone(700, 210, 0.06, 'triangle', 0.1, 0.18); break;
       case 'reload': this._tone(500, 700, 0.05, 'square', 0.1); this._tone(700, 500, 0.05, 'square', 0.1, 0.18); break;
       case 'empty': this._tone(200, 150, 0.04, 'square', 0.1); break;
+      case 'crit': this._noise(0.05, 0.4, 7000, 3000, 'highpass'); this._tone(1600, 900, 0.1, 'triangle', 0.2); this._tone(170, 45, 0.2, 'sine', 0.45); break;
+      case 'combo': [660, 880, 1175].forEach((f, i) => this._tone(f, f * 1.02, 0.1, 'square', 0.11, i * 0.06)); break;
+      case 'nearmiss': this._noise(0.28, 0.3, 700, 4200, 'bandpass'); this._tone(988, 988, 0.1, 'triangle', 0.17, 0.1); this._tone(1480, 1480, 0.18, 'triangle', 0.17, 0.18); break;
       case 'coin': this._tone(880, 880, 0.07, 'square', 0.1); this._tone(1320, 1320, 0.12, 'square', 0.1, 0.07); break;
       case 'heal': this._tone(520, 1040, 0.25, 'sine', 0.2); break;
       case 'hurt': this._tone(200, 70, 0.25, 'sawtooth', 0.28); this._noise(0.12, 0.3, 700, 150, 'lowpass'); break;

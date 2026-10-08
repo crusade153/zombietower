@@ -81,24 +81,32 @@ describe('보물상자 확률', () => {
 });
 
 describe('경제 밸런스 (참고 수치)', () => {
-  it('첫 층의 보상으로 일반 무기를 최대 강화하고 전설도 부담 없이 강화한다', () => {
+  it('코인은 귀하다: 1층 수입으로는 몇 단계만, 한 바퀴 전체로 2~4개 무기를 최대 강화', () => {
     const t = generateTower(2024);
-    let total = 0;
-    const perStage = [];
-    for (const st of t.stages) {
-      let c = 0;
+    const income = t.stages.map((st) => {
+      let c = ECON.floorReward(st.index);
       for (const z of st.zombies) c += ZOMBIES[z.type].coin * coinScale(st.index);
-      perStage.push(Math.round(c));
-      total += c;
-    }
-    const firstUpgrade = upgradeCost(W('bat', 0, 0));
-    expect(firstUpgrade).toBeLessThanOrEqual(10);
-    const maxBat = Array.from({ length: ECON.maxLevel }, (_, l) => upgradeCost(W('bat', 0, l))).reduce((a, b) => a + b, 0);
-    expect(perStage[0] + ECON.floorReward(1)).toBeGreaterThan(maxBat);
-    expect(total).toBeGreaterThan(maxBat * WEAPON_KINDS.length);
-    const maxLegendary = Array.from({ length: ECON.maxLevel }, (_, l) => upgradeCost(W('bat', 4, l))).reduce((a, b) => a + b, 0);
-    expect(maxLegendary).toBeLessThan(750);
-    expect(ECON.floorReward(1)).toBeGreaterThan(upgradeCost(W('bat', 3, 0)) * 5);
+      for (const a of st.aircoins) c += a.value;
+      return c;
+    });
+    const total = income.reduce((a, b) => a + b, 0);
+    const maxCost = (rarity) => Array.from({ length: ECON.maxLevel }, (_, l) => upgradeCost(W('bat', rarity, l))).reduce((a, b) => a + b, 0);
+    // 1층: 첫 강화는 가능하지만 +5에는 못 미친다
+    expect(income[0]).toBeGreaterThan(upgradeCost(W('bat', 0, 0)));
+    const toFive = Array.from({ length: 5 }, (_, l) => upgradeCost(W('bat', 0, l))).reduce((a, b) => a + b, 0);
+    expect(income[0]).toBeLessThan(toFive);
+    // 1~4층 합으로도 일반 무기 +10은 불가
+    expect(income.slice(0, 4).reduce((a, b) => a + b, 0)).toBeLessThan(maxCost(0));
+    // 타워 한 바퀴(콤보·클라이머 제외)로 무적 무기 2~4개 분량
+    expect(total / maxCost(6)).toBeGreaterThan(2);
+    expect(total / maxCost(6)).toBeLessThan(4);
+  });
+
+  it('층이 오를수록 좀비 수가 늘어난다', () => {
+    const t = generateTower(2024);
+    const counts = t.stages.map((st) => st.zombies.filter((z) => !['boss', 'finalBoss'].includes(z.type)).length);
+    expect(counts[0]).toBeGreaterThanOrEqual(8);
+    expect(counts[9]).toBeGreaterThan(counts[0] * 2);
   });
 
   it('값싼 강화를 반복해서 판매해도 강화 비용 이상으로 돌려받지 않는다', () => {

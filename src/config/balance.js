@@ -59,14 +59,33 @@ export const PLAYER = {
 };
 
 export const ECON = {
-  upgradeBase: 8,
-  upgradeGrowth: 1.22,
+  upgradeBase: 40,
+  upgradeGrowth: 1.35, // 일반 +10까지 약 2,200 · 무적 약 4,400코인
   upgradeDmgPerLevel: 0.12,
   maxLevel: 10,
-  zombieRewardMult: 6,
-  airCoinRewardMult: 10,
-  floorReward: (floor) => 150 + floor * 50,
-  sellValue: [60, 150, 360, 600, 900, 1400, 2200], // 중복 무기 판매가(등급별)
+  zombieRewardMult: 1,
+  airCoinRewardMult: 2,
+  floorReward: (floor) => 40 + floor * 20,
+  sellValue: [15, 35, 70, 120, 180, 260, 380], // 중복 무기 판매가(등급별)
+};
+
+// 손맛: 치명타·히트스톱·킬 콤보·아슬아슬 보너스
+export const THRILL = {
+  critChance: 0.1,
+  critMult: 2,
+  // 명중 순간 게임을 잠깐 멈춰 타격감을 준다(초). 연사 무기는 치명타·처치 때만 멈춘다.
+  hitstop: { melee: 0.04, crit: 0.07, kill: 0.06, boss: 0.2, max: 0.2 },
+  comboWindow: 3, // 마지막 처치 후 이 시간 안에 다시 처치하면 콤보 유지
+  comboTiers: [
+    { at: 5, mult: 1.5 },
+    { at: 10, mult: 2 },
+    { at: 20, mult: 3 },
+  ],
+  nearMissReward: (stage) => 5 + 2 * stage,
+  nearMissCooldown: 1.2,
+  lavaCloseGap: 1.0, // 발밑 용암이 이 거리 안까지 오면 '위기'
+  lavaEscapeGap: 5, // 위기 후 이만큼 벌리면 탈출 성공
+  lastSecond: 0.25, // 사라지기 직전 이 시간 안에 뛰어오르면 아슬아슬
 };
 
 // [일반, 레어, 에픽, 신화, 전설, 천상, 무적]. 최상위도 1층부터 획득 가능.

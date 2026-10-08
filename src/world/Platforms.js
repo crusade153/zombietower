@@ -30,6 +30,21 @@ export function blinkState(p, time) {
   return 'off';
 }
 
+/** 이 발판이 사라지기까지 남은 시간(초). 이미 사라졌으면 0, 사라질 예정이 없으면 Infinity */
+export function vanishingIn(p, time) {
+  if (!p) return Infinity;
+  if (p.type === 'falling' && p.fall) {
+    if (p.fall.state === 'shake') return Math.max(0, p.fall.t);
+    if (p.fall.state === 'fall') return 0;
+  }
+  if (p.blink) {
+    const b = p.blink;
+    const t = (time + b.offset) % b.T;
+    return t < b.on + b.warn ? b.on + b.warn - t : 0;
+  }
+  return Infinity;
+}
+
 /** 매 고정 스텝: 이동 발판 위치 갱신 + 무너지는 발판 상태 갱신 */
 export function updatePlatforms(tower, dt, time) {
   for (const p of tower.blinkers) p.solid = blinkState(p, time) !== 'off';

@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { PHYS, LAVA, TOWER, PLAYER, ECON } from '../config/balance.js';
+import { PHYS, LAVA, TOWER, PLAYER, ECON, THRILL } from '../config/balance.js';
 import { WEAPONS, RARITY } from '../config/weapons.js';
 import { ZOMBIES, zombieWeights } from '../config/zombies.js';
 import { generateTower } from '../world/TowerGenerator.js';
 import { WorldView } from '../world/WorldView.js';
 import { Lava } from '../world/Lava.js';
 import { Effects } from '../world/Effects.js';
-import { updatePlatforms, preparePlatforms, stepOn, buildNearCache } from '../world/Platforms.js';
+import { updatePlatforms, preparePlatforms, stepOn, buildNearCache, vanishingIn } from '../world/Platforms.js';
 import { updateHazards } from '../world/Hazards.js';
 import { themeForStage } from '../config/themes.js';
 import { makeHealPickup, makeWaterPickup, makeCoin, disposeWorld, setModelStyle } from '../world/models.js';
@@ -23,6 +23,7 @@ import {
 import {
   def as wdef, weaponDamage, hasPerk, upgradeCost, canUpgrade, sellValue, sellPrice, rollWeapon,
 } from '../combat/Weapons.js';
+import { Combo, LavaEscape, rollCrit } from '../combat/Thrills.js';
 import { Hud } from '../ui/Hud.js';
 import { Screens } from '../ui/Screens.js';
 import { makeRng } from './rng.js';
@@ -86,7 +87,11 @@ export class Game {
     this.zombies = [];
     this.pickups = [];
     this.acids = [];
-    this.stats = { kills: 0, deaths: 0 };
+    this.stats = { kills: 0, deaths: 0, nearMisses: 0 };
+    this.combo = new Combo();
+    this.lavaEscape = new LavaEscape();
+    this.hitstop = 0;
+    this.nearT = 0;
     this._saveDirty = false;
     this._saveT = 0;
 
@@ -197,6 +202,8 @@ export class Game {
     this.safeIdx = k;
     this.activeSafe = sz;
     this.finalBattle = false;
+    this.combo.reset();
+    this.lavaEscape.reset();
     this.lava.reset(sz.maxY - LAVA.startGap, 0);
     this.lava.setIdle(sz.maxY - LAVA.startGap);
     this.lava.y = sz.maxY - LAVA.startGap;
@@ -409,14 +416,21 @@ export class Game {
     this.syncAudioState();
 
     if (!this.manualStep && (this.state === 'play' || this.state === 'dead')) {
-      this.acc += dt;
-      let n = 0;
-      while (this.acc >= PHYS.fixedDt && n < 12) {
-        this.step(PHYS.fixedDt);
-        this.acc -= PHYS.fixedDt;
-        n++;
+      if (this.hitstop > 0) {
+        // 히트스톱: 게임 시간만 잠깐 멈추고 화면 흔들림·파티클은 계속 그린다
+        this.hitstop = this.hitstop - dt > 0.002 ? this.hitstop - dt : 0;
+        this.acc = 0;
+      } else {
+        this.acc += dt;
+        let n = 0;
+        while (this.acc >= PHYS.fixedDt && n < 12) {
+          this.step(PHYS.fixedDt);
+          this.acc -= PHYS.fixedDt;
+          n++;
+          if (this.hitstop > 0) { this.acc = 0; break; }
+        }
+        if (n >= 12) this.acc = 0;
       }
-      if (n >= 12) this.acc = 0;
     } else {
       this.acc = 0;
     }
@@ -458,6 +472,7 @@ export class Game {
     const plats = this.near(b.y);
     P.update(dt, this.input, this.cam, plats);
     if (P.events.jumped) {
+      if (vanishingIn(P.lastGround, this.time) <= THRILL.lastSecond) this.onNearMiss('platform');
       this.audio.play('jump');
       this.fx.ring(b.x, b.y, b.z, 0.85, 0xc1ffe9, 0.32, true);
       this.fx.burst(b.x, b.y + 0.05, b.z, 0xf8ffea, 6, 1.7, 0.32, 0.09);
@@ -489,6 +504,12 @@ export class Game {
       if (!this.lava.frozen && b.y + 0.15 < this.lava.y) this.killPlayer('lava');
       else if (P.hp <= 0) this.killPlayer('hp');
     }
+    if (this.state === 'play' && P.alive) {
+      const rising = this.lava.state === 'rising' && this.lava.delay <= 0;
+      if (this.lavaEscape.update(b.y - this.lava.y, rising, this.lava.state === 'idle')) this.onNearMiss('lava');
+    }
+    this.combo.update(dt);
+    this.nearT = Math.max(0, this.nearT - dt);
     this.updateLavaAmbience(dt);
     this.updateClimbers(dt);
     this.updateContext();
@@ -586,7 +607,7 @@ export class Game {
         this.save.cleared = true;
         this.markDirty(true);
         setTimeout(() => {
-          if (this.state === 'play') { this.state = 'clear'; this.input.clearAll(); this.screens.showClear({ ...this.stats, coins: this.save.coins }); }
+          if (this.state === 'play') { this.state = 'clear'; this.input.clearAll(); this.screens.showClear({ ...this.stats, bestCombo: this.combo.best, coins: this.save.coins }); }
         }, 2200);
       } else {
         this.hud.toast(`✅ ${k}층 클리어! +${reward} 코인 · 상자를 열어보자`, 2400);
@@ -606,6 +627,8 @@ export class Game {
     this.state = 'dead';
     this.deadT = 1.6;
     this.stats.deaths++;
+    this.combo.reset();
+    this.lavaEscape.reset();
     this.audio.play('die');
     this.input.clearAll();
     const loss = Math.floor(this.stageCoins * LAVA.deathCoinLoss);
@@ -785,7 +808,10 @@ export class Game {
     } else {
       this.fx.slash(b.x, b.y, b.z, pend.yaw, d.range, d.arc, 0xfff2b0);
     }
-    if (n > 0) this.cam.shake = Math.max(this.cam.shake, 0.15);
+    if (n > 0) {
+      this.cam.shake = Math.max(this.cam.shake, 0.15);
+      this.addHitstop(THRILL.hitstop.melee);
+    }
   }
 
   fireGun(w, d, target) {
@@ -847,10 +873,45 @@ export class Game {
 
   hitZombie(z, dmg, o) {
     const zb = z.body;
+    const crit = rollCrit();
+    if (crit) dmg *= THRILL.critMult;
     const killed = z.takeDamage(this, dmg, o);
-    this.hud.floater({ x: zb.x, y: zb.y + z.def.height + 0.3, z: zb.z }, Math.round(dmg), killed ? '#ffd04a' : '#fff', killed ? 1.3 : 1);
+    const top = { x: zb.x, y: zb.y + z.def.height + 0.3, z: zb.z };
+    if (crit) {
+      this.hud.floater(top, `치명타 ${Math.round(dmg)}`, '#ffb020', 1.6, 900);
+      this.fx.burst(zb.x, zb.y + z.def.height * 0.6, zb.z, 0xffd04a, 9, 5.5, 0.4, 0.13);
+      this.fx.ring(zb.x, zb.y + z.def.height * 0.5, zb.z, 1.4, 0xffd04a, 0.22, true);
+      this.cam.shake = Math.max(this.cam.shake, 0.3);
+      this.addHitstop(THRILL.hitstop.crit);
+      if (this.time - (this._critSfxT ?? -1) > 0.06) { this._critSfxT = this.time; this.audio.play('crit'); }
+    } else {
+      this.hud.floater(top, Math.round(dmg), killed ? '#ffd04a' : '#fff', killed ? 1.3 : 1);
+    }
     this.fx.burst(zb.x, zb.y + z.def.height * 0.6, zb.z, 0x6fa05a, 4, 3.5, 0.35, 0.12);
     this.audio.playImpact(o.weapon || this.currentWeapon, killed);
+  }
+
+  addHitstop(t) {
+    this.hitstop = Math.min(THRILL.hitstop.max, Math.max(this.hitstop, t));
+  }
+
+  /** 아슬아슬 보너스: kind = 'lava' | 'platform' | 'spinner' */
+  onNearMiss(kind) {
+    const P = this.player;
+    if (!P.alive || this.state !== 'play' || this.nearT > 0) return;
+    this.nearT = THRILL.nearMissCooldown;
+    const reward = Math.round(THRILL.nearMissReward(Math.max(1, this.bandStage)) * (kind === 'lava' ? 2 : 1));
+    this.save.coins += reward;
+    this.stageCoins += reward;
+    this.stats.nearMisses++;
+    this.markDirty();
+    this.hud.setCoins(this.save.coins);
+    const b = P.body;
+    const label = kind === 'lava' ? '용암 탈출!' : '아슬아슬!';
+    this.hud.floater({ x: b.x, y: b.y + 2.4, z: b.z }, `${label} +${reward}`, '#7df9ff', 1.5, 1300);
+    this.fx.ring(b.x, b.y + 0.1, b.z, 1.8, 0x7df9ff, 0.45, true);
+    this.fx.burst(b.x, b.y + 1, b.z, 0xbffcff, 10, 4, 0.5, 0.1);
+    this.audio.play('nearmiss');
   }
 
   onZombieKilled(z, o) {
@@ -865,8 +926,16 @@ export class Game {
     }
     const zb = z.body;
     const w = o.weapon || this.currentWeapon;
+    const c = this.combo.add();
     let total = z.coin;
     if (w && hasPerk(w, 'coin') && !o.burn) total *= 1.15;
+    if (!z.def.boss) total *= c.mult;
+    if (c.tierUp) {
+      const b = this.player.body;
+      this.hud.floater({ x: b.x, y: b.y + 2.6, z: b.z }, `${c.count} 콤보! 코인 ×${c.mult}`, '#ffd04a', 1.5, 1300);
+      this.audio.play('combo');
+    }
+    this.addHitstop(z.def.boss ? THRILL.hitstop.boss : THRILL.hitstop.kill);
     total = Math.max(1, Math.round(total));
     const n = Math.max(1, Math.min(6, Math.round(total / 6)));
     let left = total;
@@ -1057,12 +1126,12 @@ export class Game {
   }
 
   updateClimbers(dt) {
-    if (this.lava.state !== 'rising' || this.lava.delay > 0 || this.bandStage < 2 || this.playerSafe) return;
+    if (this.lava.state !== 'rising' || this.lava.delay > 0 || this.bandStage < 1 || this.playerSafe) return;
     this.climberT -= dt;
     if (this.climberT > 0) return;
     const stage = this.bandStage;
-    this.climberT = Math.max(16, 38 - 2.4 * stage);
-    if (this.zombies.filter((z) => z.climber && !z.dead).length >= 5) return;
+    this.climberT = Math.max(10, 28 - 1.8 * stage);
+    if (this.zombies.filter((z) => z.climber && !z.dead).length >= 8) return;
     const b = this.player.body;
     // 용암선 바로 위의 발판에서 출발
     const chain = this.tower.chain;
@@ -1072,7 +1141,7 @@ export class Game {
       if (p.maxY > this.lava.y + 1.2 && p.maxY < this.lava.y + 7 && p.maxY < b.y - 8) spawn = p;
     }
     if (!spawn) return;
-    const n = 1 + Math.floor(stage / 3);
+    const n = 1 + Math.floor(stage / 2);
     const w = zombieWeights(stage);
     delete w.spitter; delete w.tank;
     const rng = makeRng((Math.random() * 1e9) | 0);
@@ -1236,6 +1305,7 @@ export class Game {
     this.hud.setVignette(this.vig || 0);
     this.hud.setWater(this.water.charges, this.lava.state !== 'idle' && this.water.cd <= 0);
     this.hud.setCoins(this.save.coins);
+    this.hud.setCombo(this.combo.count, this.combo.mult, this.combo.left);
     const eq = this.save.equipped.map((u) => (u ? weaponByUid(this.save, u) : null));
     this.hud.renderSlots(eq, this.slot);
     if (this.debug) {

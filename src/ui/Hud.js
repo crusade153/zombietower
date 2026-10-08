@@ -24,6 +24,11 @@ export class Hud {
     this.bossEl.className = 'hidden';
     this.bossEl.innerHTML = '<b></b><div class="boss-track"><span></span></div><small></small>';
     this.el.hud.appendChild(this.bossEl);
+    this.comboEl = document.createElement('div');
+    this.comboEl.id = 'combo';
+    this.comboEl.className = 'hidden';
+    this.comboEl.innerHTML = '<b></b><span>콤보</span><em></em><div class="combo-track"><i></i></div>';
+    $('hud-left').appendChild(this.comboEl);
     this.el.pause.innerHTML = icon('pause');
     this.el.pause.title = '일시정지';
     document.querySelector('.lava-ico').innerHTML = icon('flame');
@@ -84,6 +89,22 @@ export class Hud {
     });
   }
 
+  /** 킬 콤보 표시 (2콤보부터). left: 남은 시간 비율 */
+  setCombo(count, mult, left) {
+    const show = count >= 2;
+    this._set('comboShow', show, () => this.comboEl.classList.toggle('hidden', !show));
+    if (!show) return;
+    this._set('combo', count, () => {
+      this.comboEl.querySelector('b').textContent = count;
+      this.comboEl.querySelector('em').textContent = mult > 1 ? `코인 ×${mult}` : '';
+      this.comboEl.dataset.tier = mult >= 3 ? 3 : mult >= 2 ? 2 : mult > 1 ? 1 : 0;
+      this.comboEl.classList.remove('pop');
+      void this.comboEl.offsetWidth;
+      this.comboEl.classList.add('pop');
+    });
+    this._set('comboLeft', Math.round(left * 40), (v) => { this.comboEl.querySelector('i').style.width = `${v * 2.5}%`; });
+  }
+
   setVignette(v) { this._set('vig', Math.round(v * 20), () => { this.el.vignette.style.opacity = v.toFixed(2); }); }
 
   setWater(n, ready) {
@@ -101,7 +122,7 @@ export class Hud {
   }
 
   /** 월드 좌표 → 화면 숫자 */
-  floater(pos, text, color = '#fff', size = 1) {
+  floater(pos, text, color = '#fff', size = 1, ms = 800) {
     tmp.set(pos.x, pos.y, pos.z).project(this.g.camera);
     if (tmp.z > 1) return;
     const x = (tmp.x * 0.5 + 0.5) * window.innerWidth;
@@ -113,8 +134,9 @@ export class Hud {
     d.style.top = `${y}px`;
     d.style.color = color;
     d.style.fontSize = `calc(var(--u) * ${2.4 * size})`;
+    if (ms !== 800) d.style.animationDuration = `${ms}ms`;
     this.el.floaters.appendChild(d);
-    setTimeout(() => d.remove(), 800);
+    setTimeout(() => d.remove(), ms);
   }
 
   /** 무기 슬롯 3개 렌더 */

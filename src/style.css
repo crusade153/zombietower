@@ -88,6 +88,19 @@ button:focus-visible { outline: 3px solid #f47893; outline-offset: 4px; }
 #floaters { position: absolute; inset: 0; overflow: hidden; }
 .floater { position: absolute; font-size: 21px; font-weight: 950; text-shadow: 0 2px 2px #23444b; animation: floatup .8s ease-out forwards; transform: translate(-50%, -50%); }
 @keyframes floatup { to { opacity: 0; margin-top: -48px; } }
+#combo { width: max-content; min-width: 112px; margin-top: 8px; padding: 6px 12px 8px; border: 1px solid #ffffff65; border-radius: 8px; background: #25464bc9; font-weight: 950; white-space: nowrap; }
+#combo b { display: inline-block; font-size: 26px; line-height: 1; }
+#combo span { margin-left: 4px; font-size: 12px; opacity: .85; }
+#combo em { margin-left: 8px; font-style: normal; font-size: 15px; color: #ffd04a; }
+.combo-track { height: 4px; margin-top: 6px; background: #173138; border-radius: 2px; overflow: hidden; }
+.combo-track i { display: block; height: 100%; width: 100%; background: #ffd04a; }
+#combo[data-tier="0"] .combo-track i { background: #ffffffb0; }
+#combo[data-tier="2"] b, #combo[data-tier="2"] em { color: #ffb020; }
+#combo[data-tier="3"] { border-color: #ff8a5c; }
+#combo[data-tier="3"] b, #combo[data-tier="3"] em { color: #ff8a5c; }
+#combo[data-tier="3"] .combo-track i { background: #ff8a5c; }
+#combo.pop b { animation: comboPop .18s ease-out; }
+@keyframes comboPop { from { transform: scale(1.5); } }
 
 /* Fixed-format touch controls also work with mouse input. */
 #controls { position: absolute; inset: 0; pointer-events: none; color: #fff; }
@@ -241,4 +254,9 @@ button:focus-visible { outline: 3px solid #f47893; outline-offset: 4px; }
   #hud-center { min-width: 116px; padding: 7px 6px; }
   #dpad { width: 112px; height: 112px; }
   .slot { width: 34px; height: 34px; }
+}
+@media (max-width: 700px), (max-height: 450px) and (orientation: landscape) {
+  #combo { min-width: 84px; padding: 4px 8px 6px; }
+  #combo b { font-size: 20px; }
+  #combo em { font-size: 12px; margin-left: 5px; }
 }

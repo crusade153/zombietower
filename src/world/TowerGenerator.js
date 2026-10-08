@@ -331,7 +331,7 @@ function populateStage(stage, rng) {
   const s = stage.index;
   const plats = stage.platforms;
   const eligible = plats.filter((p, i) => i >= 3 && !p.motion && !['falling', 'beam', 'arena', 'sanctuary'].includes(p.type) && Math.min(p.hx, p.hz) >= 1.6);
-  const want = Math.round(4 + 1.3 * s);
+  const want = Math.round(6 + 2 * s);
   const w = zombieWeights(s);
   const pool = eligible.slice();
   for (let n = 0; n < want && pool.length; n++) {
@@ -354,7 +354,7 @@ function populateStage(stage, rng) {
   if (stage.boss) {
     const arena = plats[plats.length - 1];
     stage.zombies.push({ type: s === 10 ? 'finalBoss' : 'boss', platform: arena, x: arena.x, y: arena.maxY, z: arena.z, boss: true });
-    for (let k = 0; k < 3; k++) {
+    for (let k = 0; k < 5; k++) {
       stage.zombies.push({
         type: rng.weighted(w), platform: arena,
         x: arena.x + rng.range(-5, 5), y: arena.maxY, z: arena.z + rng.range(-5, 5),

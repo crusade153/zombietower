@@ -13,7 +13,7 @@ export const ZOMBIES = {
     attackRange: 1.3, windup: 0.3, cooldown: 0.9, knockResist: 0,
   },
   tank: {
-    name: '마그마 골렘', hp: 170, dmg: 22, speed: 1.9, coin: 28, scale: 1.45, radius: 0.62, height: 2.6,
+    name: '마그마 골렘', hp: 170, dmg: 22, speed: 1.9, coin: 20, scale: 1.45, radius: 0.62, height: 2.6,
     colors: { skin: 0x593d3b, shirt: 0x302633, pants: 0x221e2b },
     attackRange: 1.9, windup: 0.6, cooldown: 1.5, knockResist: 0.7,
   },
@@ -23,22 +23,22 @@ export const ZOMBIES = {
     attackRange: 14, windup: 0.5, cooldown: 2.2, knockResist: 0, ranged: true,
   },
   boss: {
-    name: '화산 수문장', hp: 900, dmg: 24, speed: 2.6, coin: 320, scale: 2.4, radius: 1.0, height: 4.3,
+    name: '화산 수문장', hp: 900, dmg: 24, speed: 2.6, coin: 200, scale: 2.4, radius: 1.0, height: 4.3,
     colors: { skin: 0x763d3b, shirt: 0x362335, pants: 0x262235 },
     attackRange: 3.2, windup: 0.8, cooldown: 2.0, knockResist: 0.85, boss: true,
   },
   brute: {
-    name: '흑요석 기사', hp: 320, dmg: 22, speed: 2.3, coin: 80, scale: 1.65, radius: 0.7, height: 3.0,
+    name: '흑요석 기사', hp: 320, dmg: 22, speed: 2.3, coin: 35, scale: 1.65, radius: 0.7, height: 3.0,
     colors: { skin: 0x634148, shirt: 0x262133, pants: 0x231b29 },
     attackRange: 2.1, windup: 0.65, cooldown: 1.6, knockResist: 0.75, elite: true,
   },
   warlock: {
-    name: '지옥불 집행자', hp: 260, dmg: 20, speed: 2.2, coin: 100, scale: 1.4, radius: 0.6, height: 2.5,
+    name: '지옥불 집행자', hp: 260, dmg: 20, speed: 2.2, coin: 40, scale: 1.4, radius: 0.6, height: 2.5,
     colors: { skin: 0x8f414b, shirt: 0x402444, pants: 0x252134 },
     attackRange: 14, windup: 0.75, cooldown: 1.8, knockResist: 0.5, ranged: true, elite: true,
   },
   finalBoss: {
-    name: '용암 군주 · 이그니스', hp: 1800, dmg: 26, speed: 2.4, coin: 1600, scale: 3.1, radius: 1.3, height: 5.6,
+    name: '용암 군주 · 이그니스', hp: 1800, dmg: 26, speed: 2.4, coin: 600, scale: 3.1, radius: 1.3, height: 5.6,
     colors: { skin: 0x7d363c, shirt: 0x281c30, pants: 0x1d1928 },
     attackRange: 3.5, windup: 1.1, cooldown: 1.8, knockResist: 0.95, boss: true, finalBoss: true,
   },

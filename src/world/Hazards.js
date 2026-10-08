@@ -46,6 +46,10 @@ export function updateHazards(tower, time, g) {
         const sz = dx * h.dir * sgn;
         const dmg = 9 * dmgScale(h.stage);
         if (P.hurt(dmg, b.x - sx, b.z - sz, 7)) g.onPlayerHurt(dmg);
+      } else if (d < 0.7 && !b.grounded && b.y >= p.maxY + 0.8 && b.y < p.maxY + 2.0 && !(time - (h.nearAt ?? -9) < 1)) {
+        // 막대가 발밑으로 스쳐 지나감 → 아슬아슬
+        h.nearAt = time;
+        g.onNearMiss('spinner');
       }
     } else if (h.kind === 'fire') {
       for (const v of h.vents) {

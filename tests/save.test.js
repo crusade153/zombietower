@@ -28,6 +28,13 @@ describe('아이패드 저장 이전', () => {
     expect(s.weapons[0].rarity).toBe(6);
     expect(s.openedChests).toEqual([1, 5]);
   });
+  it('경제 개편 이전 저장의 코인은 1/8로 환산하고, 새 저장은 그대로 둔다', () => {
+    const w = [{ uid: 1, kind: 'bat', rarity: 0, level: 0 }];
+    expect(normalizeSave({ v: 1, coins: 80000, weapons: w }).coins).toBe(10000);
+    const fresh = normalizeSave({ v: 1, econVersion: 2, coins: 777, weapons: w });
+    expect(fresh.coins).toBe(777);
+    expect(normalizeSave(fresh).coins).toBe(777);
+  });
   it('다른 파일이나 유효한 무기가 없는 저장은 거부한다', () => {
     expect(() => normalizeSave({ hello: 'world' })).toThrow();
     expect(() => normalizeSave({ v: 1, weapons: [{ kind: 'unknown', uid: 1 }] })).toThrow();

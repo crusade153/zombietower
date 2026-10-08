@@ -298,7 +298,7 @@ export class Screens {
       <div class="panel">
         <h1>❄️ 얼음 성채 해방!</h1>
         <p>최종 보스 용암 군주를 쓰러뜨리고 정상에 도착했다!</p>
-        <p>처치한 좀비 <b>${fmt(stats.kills)}</b> · 사망 <b>${fmt(stats.deaths)}</b> · 보유 코인 <i class="coin"></i> <b>${fmt(stats.coins)}</b></p>
+        <p>처치한 좀비 <b>${fmt(stats.kills)}</b> · 최고 콤보 <b>${fmt(stats.bestCombo || 0)}</b> · 아슬아슬 <b>${fmt(stats.nearMisses || 0)}</b>회 · 사망 <b>${fmt(stats.deaths)}</b> · 보유 코인 <i class="coin"></i> <b>${fmt(stats.coins)}</b></p>
         <div class="row">
           <button class="btn green" data-act="ngplus">새 타워 (무기·코인 유지, 더 어려움)</button>
           <button class="btn sub" data-act="title">타이틀로</button>
