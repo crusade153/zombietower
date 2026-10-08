@@ -8,6 +8,7 @@ export class Input {
     this.attackHeld = false;
     this.jumpPressed = false; // 한 번 읽으면 소비
     this.attackPressed = false;
+    this.attackReleased = false; // 실제로 손을 뗀 순간만 (clearAll로는 켜지지 않음)
     this.waterPressed = false;
     this.slotPressed = -1;
     this.interactPressed = false;
@@ -40,6 +41,7 @@ export class Input {
 
   consumeJump() { const v = this.jumpPressed; this.jumpPressed = false; return v; }
   consumeAttack() { const v = this.attackPressed; this.attackPressed = false; return v; }
+  consumeAttackRelease() { const v = this.attackReleased; this.attackReleased = false; return v; }
   consumeWater() { const v = this.waterPressed; this.waterPressed = false; return v; }
   consumeSlot() { const v = this.slotPressed; this.slotPressed = -1; return v; }
   consumeCam() { const r = { x: this.camDX, y: this.camDY }; this.camDX = 0; this.camDY = 0; return r; }
@@ -48,7 +50,7 @@ export class Input {
     this.dpad.up = this.dpad.down = this.dpad.left = this.dpad.right = false;
     this.keys.clear();
     this.jumpHeld = this.attackHeld = false;
-    this.jumpPressed = this.attackPressed = this.waterPressed = false;
+    this.jumpPressed = this.attackPressed = this.attackReleased = this.waterPressed = false;
     this.slotPressed = -1;
     this._pointers.clear();
     this.camDX = this.camDY = 0;
@@ -117,7 +119,7 @@ export class Input {
       el.addEventListener('lostpointercapture', up);
     };
     hold('btn-jump', () => { this.jumpHeld = true; this.jumpPressed = true; }, () => { this.jumpHeld = false; });
-    hold('btn-attack', () => { this.attackHeld = true; this.attackPressed = true; }, () => { this.attackHeld = false; });
+    hold('btn-attack', () => { this.attackHeld = true; this.attackPressed = true; }, () => { if (this.attackHeld) this.attackReleased = true; this.attackHeld = false; });
     hold('btn-water', () => { this.waterPressed = true; });
     // 무기 슬롯은 동적으로 생성되므로 위임
     document.getElementById('weapon-slots').addEventListener('pointerdown', (e) => {
@@ -167,7 +169,7 @@ export class Input {
     window.addEventListener('keyup', (e) => {
       this.keys.delete(e.code);
       if (e.code === 'Space') this.jumpHeld = false;
-      if (e.code === 'KeyJ' || e.code === 'KeyK') this.attackHeld = false;
+      if ((e.code === 'KeyJ' || e.code === 'KeyK') && this.attackHeld) { this.attackHeld = false; this.attackReleased = true; }
     });
     window.addEventListener('blur', () => this.clearAll());
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.clearAll(); });

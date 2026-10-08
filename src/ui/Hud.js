@@ -115,6 +115,18 @@ export class Hud {
     this._set('comboLeft', Math.round(left * 40), (v) => { this.comboEl.querySelector('i').style.width = `${v * 2.5}%`; });
   }
 
+  /** 공격 버튼 테두리: 차지 게이지(금색) / 재충전(흰색) / 준비 완료(빛남) */
+  setCharge(charge, cool, active) {
+    const btn = this.attackBtn || (this.attackBtn = document.getElementById('btn-attack'));
+    const ready = charge >= 1;
+    const key = `${Math.round(charge * 30)}|${Math.round(cool * 30)}|${active}`;
+    this._set('charge', key, () => {
+      btn.style.setProperty('--charge', cool > 0 ? (1 - cool).toFixed(3) : charge.toFixed(3));
+      btn.classList.toggle('cooling', cool > 0);
+      btn.classList.toggle('ready', ready && !active);
+    });
+  }
+
   /** 층 도전 중: 시간/목표 · 피격 · 공중 코인 */
   setRun(run, maxHits) {
     const key = run ? `${Math.floor(run.t)}|${run.hits}|${run.air}|${run.par}` : '';

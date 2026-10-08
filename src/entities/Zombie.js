@@ -121,7 +121,7 @@ export class Zombie {
   takeDamage(g, dmg, o = {}) {
     if (this.dead) return false;
     if (this.def.finalBoss && !g.finalBattle) return false;
-    if (this.def.shield && !o.blast && !o.fromAbove && o.kx !== undefined) {
+    if (this.def.shield && !o.blast && !o.unblockable && !o.fromAbove && o.kx !== undefined) {
       // 공격 방향(공격자→좀비)이 방패 정면이면 대부분 막는다
       const fx = Math.sin(this.facing);
       const fz = Math.cos(this.facing);

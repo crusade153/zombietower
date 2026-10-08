@@ -223,6 +223,7 @@ export class Screens {
       document.getElementById('chest-result').innerHTML = `
         <div style="color:${rar.color};font-weight:900;font-size:calc(var(--u)*3.2)">${esc(weaponName(w))}</div>
         <p>공격력 <b>${fmt(weaponDamage(w))}</b>${WEAPONS[w.kind].pellets > 1 ? ` ×${WEAPONS[w.kind].pellets}발` : ''} · ${esc(WEAPONS[w.kind].desc)}</p>
+        <p>⚡ 필살기 <b>${esc(WEAPONS[w.kind].special.name)}</b> · ${esc(WEAPONS[w.kind].special.desc)}</p>
         ${perks(w).length ? `<p style="color:${rar.color}">✨ ${perks(w).map((p) => PERK_TEXT[p]).join(' · ')}</p>` : ''}
         ${res.sold ? `<p>보관함이 가득 차서 자동 판매 → <i class="coin"></i>${fmt(res.sold)}</p>` : '<p class="hint">보관함에 추가됨</p>'}`;
       const row = this.el.querySelector('.row');
@@ -275,6 +276,7 @@ export class Screens {
             <div class="appearance-badge" style="--upgrade-color:${appearance.color}">✦ ${appearance.name} · +${sel.level}</div>
             <p class="hint appearance-hint">${appearance.next ? `+${appearance.next}에서 다음 외형 해금` : '최종 외형 · 황금 오라'}<br>+1 강철 · +4 룬 · +7 플라즈마 · +10 황금</p>
             ${esc(d.desc)}<br>
+            ⚡ <b>${esc(d.special.name)}</b> · ${esc(d.special.desc)}<br>
             ${perks(sel).length ? `<span style="color:${r.color}">✨ ${perks(sel).map((p) => PERK_TEXT[p]).join(' · ')}</span><br>` : ''}
             <div class="row" style="justify-content:flex-start;margin-top:.6em">
               <button class="btn green" data-act="upgrade" ${!can || s.coins < cost ? 'disabled' : ''}>${can ? `강화 <i class="coin"></i>${fmt(cost)}` : '최대 강화'}</button>

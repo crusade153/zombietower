@@ -88,6 +88,12 @@ export const THRILL = {
   lastSecond: 0.25, // 사라지기 직전 이 시간 안에 뛰어오르면 아슬아슬
 };
 
+// 차지 필살기: 공격 버튼을 time초 이상 누르고 있다가 떼면 발동, 이후 cooldown초 재충전
+export const CHARGE = {
+  time: 0.9,
+  cooldown: 6,
+};
+
 // 층별 별 3개: ⏱ 목표 시간 안에 · 💔 피격 maxHits회 이하 · 💰 공중 코인 airRate 이상.
 // 별마다 처음 딸 때만 reward 지급. 이미 클리어한 층은 다시 도전하면 좀비·공중 코인이 되살아난다.
 export const STARS = {

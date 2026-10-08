@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { PHYS, LAVA, TOWER, PLAYER, ECON, THRILL, STARS } from '../config/balance.js';
+import { PHYS, LAVA, TOWER, PLAYER, ECON, THRILL, STARS, CHARGE } from '../config/balance.js';
 import { WEAPONS, RARITY } from '../config/weapons.js';
 import { ZOMBIES, zombieWeights } from '../config/zombies.js';
 import { generateTower } from '../world/TowerGenerator.js';
@@ -25,6 +25,7 @@ import {
 } from '../combat/Weapons.js';
 import { Combo, LavaEscape, rollCrit } from '../combat/Thrills.js';
 import { StageRun } from './StageRun.js';
+import { startSpecial, updateSpecial } from '../combat/Specials.js';
 import { Hud } from '../ui/Hud.js';
 import { Screens } from '../ui/Screens.js';
 import { makeRng } from './rng.js';
@@ -93,6 +94,9 @@ export class Game {
     this.lavaEscape = new LavaEscape();
     this.hitstop = 0;
     this.nearT = 0;
+    this.charge = 0; // 차지 필살기 게이지(초)
+    this.specialCd = 0;
+    this.special = null; // 지속형 필살기(회오리 베기·탄막 난사) 진행 상태
     this._saveDirty = false;
     this._saveT = 0;
 
@@ -206,6 +210,7 @@ export class Game {
     this.finalBattle = false;
     this.combo.reset();
     this.lavaEscape.reset();
+    this.resetCharge();
     this.lava.reset(sz.maxY - LAVA.startGap, 0);
     this.lava.setIdle(sz.maxY - LAVA.startGap);
     this.lava.y = sz.maxY - LAVA.startGap;
@@ -662,6 +667,7 @@ export class Game {
     this.deadT = 1.6;
     this.stats.deaths++;
     if (this.run) this.run.hits++;
+    this.resetCharge();
     this.combo.reset();
     this.lavaEscape.reset();
     this.audio.play('die');
@@ -728,6 +734,7 @@ export class Game {
     if (!uid || i === this.slot) return;
     this.slot = i;
     this.pending = null;
+    this.resetCharge(true);
     this.player.setWeapon(this.currentWeapon);
     this.audio.play('ui');
   }
@@ -746,8 +753,44 @@ export class Game {
 
     const w = this.currentWeapon;
     const pressed = this.input.consumeAttack();
-    if (!w || !P.alive) return;
-    if ((pressed || this.input.attackHeld) && this.cd <= 0) this.startAttack(w);
+    const released = this.input.consumeAttackRelease();
+    this.specialCd = Math.max(0, this.specialCd - dt);
+    if (this.special) updateSpecial(this, dt);
+    if (!w || !P.alive) { this.charge = 0; return; }
+
+    // 차지: 누르고 있는 동안 게이지가 차고(일반 공격은 계속), 다 찬 뒤 떼면 필살기
+    if (this.input.attackHeld && this.specialCd <= 0 && !this.special) {
+      const before = this.charge;
+      this.charge = Math.min(CHARGE.time, this.charge + dt);
+      if (before < CHARGE.time && this.charge >= CHARGE.time) this.onChargeReady(w);
+    }
+    if (released) {
+      if (this.charge >= CHARGE.time && !this.special) {
+        this.specialCd = CHARGE.cooldown;
+        this.cd = Math.max(this.cd, 0.25);
+        this.pending = null;
+        startSpecial(this, w);
+      }
+      this.charge = 0;
+    }
+    if (!this.special && (pressed || this.input.attackHeld) && this.cd <= 0) this.startAttack(w);
+  }
+
+  onChargeReady(w) {
+    const b = this.player.body;
+    this.audio.play('charged');
+    this.fx.ring(b.x, b.y + 0.05, b.z, 1.4, 0xffd04a, 0.35, true);
+    if (!this._chargeTip) {
+      this._chargeTip = true;
+      this.hud.toast(`⚡ 손을 떼면 필살기 · ${WEAPONS[w.kind].special.name}`, 1600);
+    }
+  }
+
+  /** keepCooldown: 무기 교체처럼 게이지만 비우고 재충전 시간은 유지 */
+  resetCharge(keepCooldown = false) {
+    this.charge = 0;
+    this.special = null;
+    if (!keepCooldown) this.specialCd = 0;
   }
 
   /**
@@ -1403,6 +1446,7 @@ export class Game {
     this.hud.setCoins(this.save.coins);
     this.hud.setCombo(this.combo.count, this.combo.mult, this.combo.left);
     this.hud.setRun(this.playerSafe ? null : this.run, STARS.maxHits);
+    this.hud.setCharge(this.charge / CHARGE.time, this.specialCd / CHARGE.cooldown, !!this.special);
     const eq = this.save.equipped.map((u) => (u ? weaponByUid(this.save, u) : null));
     this.hud.renderSlots(eq, this.slot);
     if (this.debug) {
