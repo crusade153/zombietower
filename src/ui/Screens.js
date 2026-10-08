@@ -65,6 +65,7 @@ export class Screens {
       case 'close': this.hide(); g.closeModal(); break;
       case 'resume': this.hide(); g.resume(); break;
       case 'mute': g.toggleMute(); this.showPause(); break;
+      case 'stick': g.setStickMode(data.mode); this.showPause(); break;
       case 'title': this.hide(); g.toTitle(); break;
       case 'export-save': {
         const url = URL.createObjectURL(new Blob([JSON.stringify(g.save, null, 2)], { type: 'application/json' }));
@@ -125,6 +126,9 @@ export class Screens {
         <h2>${icon('pause')} 잠깐 쉬어가기</h2>
         <div class="graphics-options" role="group" aria-label="그래픽 스타일">
           ${[['polished', '현재 그래픽'], ['classic', '초기 블록 그래픽']].map(([style, label]) => `<button class="graphics-choice ${g.save.graphicsStyle === style ? 'selected' : ''}" data-act="graphics" data-style="${style}" aria-pressed="${g.save.graphicsStyle === style}">${label}</button>`).join('')}
+        </div>
+        <div class="graphics-options" role="group" aria-label="이동 패드">
+          ${[['float', '이동 패드 · 터치한 곳'], ['fixed', '이동 패드 · 고정']].map(([mode, label]) => `<button class="graphics-choice ${(g.save.stickMode || 'float') === mode ? 'selected' : ''}" data-act="stick" data-mode="${mode}" aria-pressed="${(g.save.stickMode || 'float') === mode}">${label}</button>`).join('')}
         </div>
         <div class="audio-settings">
           ${[['music', 'BGM'], ['effects', '효과음']].map(([channel, label]) => {

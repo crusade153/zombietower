@@ -122,7 +122,7 @@ button:focus-visible { outline: 3px solid #f47893; outline-offset: 4px; }
 .act-btn.water .icon { width: 26px; height: 26px; }
 .act-btn.water span { position: absolute; right: -2px; top: -2px; width: 23px; height: 23px; border-radius: 50%; background: #fff7da; color: #29597c; font-size: 12px; font-weight: 900; display: grid; place-items: center; }
 .act-btn.water.empty { opacity: .5; }
-#weapon-slots { position: absolute; right: 88px; bottom: 120px; display: flex; gap: 7px; pointer-events: auto; }
+#weapon-slots { position: absolute; right: 72px; bottom: 178px; display: flex; gap: 7px; pointer-events: auto; }
 .slot { width: 48px; height: 48px; display: grid; place-items: center; background: #244953bb; border: 2px solid #ffffff85; border-radius: 8px; font-size: 23px; position: relative; touch-action: none; cursor: pointer; }
 .slot.active { box-shadow: 0 0 0 2px #ffda63, inset 0 0 0 1px #ffda63; background: #516e69e6; }
 .slot .lv, .slot .ammo { position: absolute; font-size: 11px; font-weight: 900; text-shadow: 0 1px 2px #24444b; }
@@ -220,7 +220,7 @@ button:focus-visible { outline: 3px solid #f47893; outline-offset: 4px; }
   .act-btn.jump { width: 80px; height: 80px; }
   .act-btn.attack { right: 91px; width: 70px; height: 70px; bottom: 12px; }
   .act-btn.water { right: 7px; bottom: 99px; width: 54px; height: 54px; }
-  #weapon-slots { right: 76px; bottom: 132px; gap: 5px; }
+  #weapon-slots { right: 60px; bottom: 150px; gap: 5px; }
   .slot { width: 39px; height: 39px; font-size: 19px; }
   #ctx-buttons { bottom: 195px; }
   #toast { top: 20%; font-size: 18px; }
@@ -307,13 +307,28 @@ button:focus-visible { outline: 3px solid #f47893; outline-offset: 4px; }
 .shop-panel { width: min(96vw, 760px); }
 .shop-h { margin: 14px 0 8px; font-size: 15px; color: #335752; }
 .shop-item .own { font-size: 12px; color: #5e9489; margin-left: 4px; }
-#item-bar { position: absolute; left: calc(var(--safe-l) + 24px); bottom: calc(var(--safe-b) + 192px); display: flex; gap: 8px; pointer-events: auto; }
-.item-btn { position: relative; width: 52px; height: 52px; border-radius: 12px; border: 2px solid #ffffffc0; background: #25464bd0; font-size: 26px; display: grid; place-items: center; touch-action: none; box-shadow: 0 3px 0 #22464d80; }
+
+/* 아이템: 오른손 쪽 점프 버튼 주위 고정 자리 (스프링·망토가 점프 바로 옆) */
+#item-bar { position: absolute; inset: 0; pointer-events: none; }
+.item-btn { position: absolute; width: 56px; height: 56px; border-radius: 50%; border: 2px solid #ffffffc0; background: #25464bd9; font-size: 26px; display: grid; place-items: center; pointer-events: auto; touch-action: none; box-shadow: 0 3px 0 #22464d80; }
 .item-btn:active { transform: translateY(2px); }
-.item-btn span { position: absolute; right: -5px; bottom: -5px; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 10px; background: #fff7da; color: #29597c; font-size: 12px; font-weight: 900; display: grid; place-items: center; }
+.item-btn span { position: absolute; right: -4px; bottom: -4px; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 10px; background: #fff7da; color: #29597c; font-size: 12px; font-weight: 900; display: grid; place-items: center; }
 .item-btn em { position: absolute; left: 50%; top: -18px; transform: translateX(-50%); font-style: normal; font-size: 12px; font-weight: 900; color: #9ff3ff; text-shadow: 0 1px 2px #1c444b; }
 .item-btn.active { border-color: #9ff3ff; box-shadow: 0 0 14px #8ff0ff; }
-@media (max-width: 700px), (max-height: 450px) and (orientation: landscape) {
-  #item-bar { left: 12px; bottom: 148px; gap: 6px; }
-  .item-btn { width: 42px; height: 42px; font-size: 21px; }
+.item-btn[data-id="spring"] { right: 82px; bottom: 104px; background: #3f9d7bd9; }
+.item-btn[data-id="cloak"] { right: 146px; bottom: 108px; background: #5d6aa8d9; }
+.item-btn[data-id="potion"] { right: 9px; bottom: 188px; width: 50px; height: 50px; font-size: 22px; }
+.item-btn[data-id="magnet"] { right: 212px; bottom: 96px; width: 50px; height: 50px; font-size: 22px; }
+@media (max-width: 700px) {
+  .item-btn { width: 46px; height: 46px; font-size: 21px; }
+  .item-btn[data-id="spring"] { right: 68px; bottom: 88px; }
+  .item-btn[data-id="cloak"] { right: 120px; bottom: 90px; }
+  .item-btn[data-id="potion"] { right: 7px; bottom: 160px; width: 42px; height: 42px; font-size: 19px; }
+  .item-btn[data-id="magnet"] { right: 176px; bottom: 78px; width: 42px; height: 42px; font-size: 19px; }
 }
+
+/* 따라오는 이동 패드: 왼쪽 아래 영역 어디든 누르면 그 자리에 패드가 생긴다 */
+#move-zone { position: absolute; left: 0; top: 30%; bottom: 0; width: 44%; pointer-events: auto; touch-action: none; }
+#move-zone.off { pointer-events: none; }
+#dpad.floating-idle { opacity: .55; }
+#dpad.floating-active { opacity: 1; transform-origin: center center; }

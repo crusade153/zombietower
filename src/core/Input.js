@@ -61,10 +61,22 @@ export class Input {
     this._pointers.clear();
     this.camDX = this.camDY = 0;
     document.querySelectorAll('#dpad .arm.on, .act-btn.pressed').forEach((e) => e.classList.remove('on', 'pressed'));
+    if (this._dpadReset) this._dpadReset();
+  }
+
+  /** 따라오는 패드 켜기/끄기. 끄면 예전처럼 고정 위치 패드만 반응 */
+  setFloating(on) {
+    this.floatingStick = on;
+    const zone = document.getElementById('move-zone');
+    const pad = document.getElementById('dpad');
+    if (zone) zone.classList.toggle('off', !on);
+    if (pad) pad.classList.toggle('floating-idle', on);
   }
 
   _bindDpad() {
     const el = document.getElementById('dpad');
+    const zone = document.getElementById('move-zone');
+    this.floatingStick = true;
     const arms = {
       up: el.querySelector('.up'), down: el.querySelector('.down'),
       left: el.querySelector('.left'), right: el.querySelector('.right'),
@@ -81,24 +93,44 @@ export class Input {
       this.dpad.down = ny > T;
       for (const k in arms) arms[k].classList.toggle('on', this.dpad[k]);
     };
+    // 패드를 손가락 위치로 옮긴다 (패드 중심 = 터치 시작점)
+    const moveTo = (e) => {
+      const host = el.offsetParent || document.body;
+      const r = host.getBoundingClientRect();
+      el.style.left = `${e.clientX - r.left - el.offsetWidth / 2}px`;
+      el.style.top = `${e.clientY - r.top - el.offsetHeight / 2}px`;
+      el.style.bottom = 'auto';
+      el.classList.add('floating-active');
+    };
+    const goHome = () => {
+      el.style.left = el.style.top = el.style.bottom = '';
+      el.classList.remove('floating-active');
+    };
     const end = (e) => {
       if (e.pointerId !== activeId) return;
       activeId = null;
       this.dpad.up = this.dpad.down = this.dpad.left = this.dpad.right = false;
       for (const k in arms) arms[k].classList.remove('on');
+      goHome();
     };
-    el.addEventListener('pointerdown', (e) => {
-      if (!this.enabled) return;
+    const start = (e, target) => {
+      if (!this.enabled || activeId !== null) return;
       e.preventDefault();
       if (e.pointerType === 'touch') this.touchDetected = true;
       activeId = e.pointerId;
-      try { el.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ }
+      try { target.setPointerCapture(e.pointerId); } catch (err) { /* 무시 */ }
+      if (this.floatingStick) moveTo(e);
       apply(e);
-    });
-    el.addEventListener('pointermove', (e) => { if (e.pointerId === activeId) apply(e); });
-    el.addEventListener('pointerup', end);
-    el.addEventListener('pointercancel', end);
-    el.addEventListener('lostpointercapture', end);
+    };
+    el.addEventListener('pointerdown', (e) => start(e, el));
+    zone.addEventListener('pointerdown', (e) => { if (this.floatingStick) start(e, zone); });
+    for (const t of [el, zone]) {
+      t.addEventListener('pointermove', (e) => { if (e.pointerId === activeId) apply(e); });
+      t.addEventListener('pointerup', end);
+      t.addEventListener('pointercancel', end);
+      t.addEventListener('lostpointercapture', end);
+    }
+    this._dpadReset = () => { activeId = null; goHome(); };
   }
 
   _bindButtons() {

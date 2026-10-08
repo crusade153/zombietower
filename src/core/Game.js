@@ -72,6 +72,7 @@ export class Game {
     this.camera = new THREE.PerspectiveCamera(62, 1, 0.1, 1200);
     this.cam = new CameraRig(this.camera);
     this.input = new Input();
+    this.input.setFloating(this.save.stickMode !== 'fixed');
     this.audio = new AudioSys(this.save);
     this.fx = new Effects(this.scene);
     this.hud = new Hud(this);
@@ -255,7 +256,7 @@ export class Game {
     this.audio.unlock();
     if (!cont) {
       const keep = this.save.muted;
-      const preferences = { graphicsStyle: this.save.graphicsStyle, musicVolume: this.save.musicVolume, effectsVolume: this.save.effectsVolume };
+      const preferences = { graphicsStyle: this.save.graphicsStyle, musicVolume: this.save.musicVolume, effectsVolume: this.save.effectsVolume, stickMode: this.save.stickMode };
       this.save = newSave(keep);
       Object.assign(this.save, preferences);
       this.markDirty(true);
@@ -393,6 +394,12 @@ export class Game {
     this.hud.setGraphicsStyle(style);
     this.markDirty(true);
     this.hud.toast(style === 'classic' ? '초기 블록 그래픽' : '현재 그래픽', 1100);
+  }
+
+  setStickMode(mode) {
+    this.save.stickMode = mode === 'fixed' ? 'fixed' : 'float';
+    this.input.setFloating(this.save.stickMode === 'float');
+    this.markDirty(true);
   }
 
   setDifficulty(v) {

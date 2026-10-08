@@ -23,6 +23,7 @@ function freshSave() {
     bestTimes: Array(11).fill(0), // 층별 최고 기록(초), 0 = 없음
     abilities: { doubleJump: false, dash: false }, // 해금한 이동 능력
     items: { spring: 0, cloak: 0, potion: 0, magnet: 0 }, // 소모 아이템 보유 수
+    stickMode: 'float', // 이동 패드: float = 터치한 곳에 생김, fixed = 고정 위치
     best: 0,
     muted: false,
     graphicsStyle: 'polished',
@@ -85,6 +86,7 @@ export function normalizeSave(raw) {
   s.cleared = !!raw.cleared;
   s.muted = !!raw.muted;
   s.graphicsStyle = raw.graphicsStyle === 'classic' ? 'classic' : 'polished';
+  s.stickMode = raw.stickMode === 'fixed' ? 'fixed' : 'float';
   for (const key of ['musicVolume', 'effectsVolume']) {
     s[key] = typeof raw[key] === 'number' && Number.isFinite(raw[key])
       ? Math.max(0, Math.min(1, raw[key])) : defaults[key];
