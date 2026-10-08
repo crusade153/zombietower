@@ -13,9 +13,11 @@ export function weaponDamage(w) {
 }
 
 export function upgradeCost(w) {
-  return Math.round(ECON.upgradeBase * ECON.upgradeGrowth ** w.level * RARITY[w.rarity].cost);
+  const early = Math.min(w.level, ECON.softCapLevel);
+  const late = Math.max(0, w.level - ECON.softCapLevel);
+  return Math.round(ECON.upgradeBase * ECON.upgradeGrowth ** early * (1 + ECON.upgradeLateGrowth * late) * RARITY[w.rarity].cost);
 }
-export const canUpgrade = (w) => w.level < ECON.maxLevel;
+export const canUpgrade = (w) => w.level < ECON.levelLimit;
 export const sellValue = (w) => ECON.sellValue[w.rarity];
 
 export function sellPrice(w) {
@@ -25,7 +27,7 @@ export function sellPrice(w) {
 }
 
 export function weaponAppearance(w) {
-  const level = Math.max(0, Math.min(ECON.maxLevel, w.level || 0));
+  const level = Math.max(0, Math.min(ECON.softCapLevel, w.level || 0));
   const tier = level >= 10 ? 4 : level >= 7 ? 3 : level >= 4 ? 2 : level >= 1 ? 1 : 0;
   return {
     tier, level,

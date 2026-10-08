@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { PHYS, LAVA, TOWER, PLAYER, ECON, THRILL, STARS, CHARGE, ABILITIES } from '../config/balance.js';
+import { PHYS, LAVA, TOWER, PLAYER, ECON, THRILL, STARS, CHARGE, ABILITIES, ITEMS } from '../config/balance.js';
 import { WEAPONS, RARITY } from '../config/weapons.js';
 import { ZOMBIES, zombieWeights } from '../config/zombies.js';
 import { generateTower, bossStage } from '../world/TowerGenerator.js';
@@ -97,6 +97,8 @@ export class Game {
     this.charge = 0; // 차지 필살기 게이지(초)
     this.specialCd = 0;
     this.special = null; // 지속형 필살기(회오리 베기·탄막 난사) 진행 상태
+    this.invisibleT = 0; // 투명 망토 남은 시간
+    this.magnetT = 0; // 코인 자석 남은 시간
     this._saveDirty = false;
     this._saveT = 0;
 
@@ -527,6 +529,7 @@ export class Game {
     }
     this.combo.update(dt);
     this.nearT = Math.max(0, this.nearT - dt);
+    this.updateItemEffects(dt);
     if (this.run && !this.playerSafe) this.run.t += dt;
     this.updateLavaAmbience(dt);
     this.updateClimbers(dt);
@@ -680,6 +683,7 @@ export class Game {
     this.stats.deaths++;
     if (this.run) this.run.hits++;
     this.resetCharge();
+    this.endItemEffects();
     this.combo.reset();
     this.lavaEscape.reset();
     this.audio.play('die');
@@ -757,6 +761,8 @@ export class Game {
     const s = this.input.consumeSlot();
     if (s >= 0) this.switchSlot(s);
     if (this.input.consumeWater()) this.useWater();
+    const item = this.input.consumeItem();
+    if (item) this.useItem(item);
 
     if (this.pending) {
       this.pending.t -= dt;
@@ -1239,7 +1245,7 @@ export class Game {
         const body = it.body;
         const dx = pb.x - body.x; const dy = pb.y + 0.9 - body.y; const dz = pb.z - body.z;
         const d = Math.hypot(dx, dy, dz);
-        if (d < 3.6 && P.alive) {
+        if (d < (this.magnetT > 0 ? ITEMS.magnet.radius : 3.6) && P.alive) {
           const k = Math.min(1, dt * 12);
           body.x += dx * k; body.y += dy * k; body.z += dz * k;
         } else {
@@ -1260,7 +1266,8 @@ export class Game {
       } else if (it.type === 'aircoin') {
         it.mesh.rotation.y += dt * 4;
         it.mesh.position.y = it.y + Math.sin(this.time * 3 + it.x) * 0.1;
-        if (P.alive && Math.hypot(pb.x - it.x, pb.z - it.z) < 1.25 && Math.abs(pb.y + 0.9 - it.y) < 1.6) {
+        const mag = this.magnetT > 0;
+        if (P.alive && Math.hypot(pb.x - it.x, pb.z - it.z) < (mag ? 5 : 1.25) && Math.abs(pb.y + 0.9 - it.y) < (mag ? 4 : 1.6)) {
           it.taken = true;
           this.save.coins += it.value;
           this.stageCoins += it.value;
@@ -1394,6 +1401,7 @@ export class Game {
           buttons.push({ id: 'forge', label: '⚒ 대장간 · 장비', onTap: () => this.openForgeUi() });
         }
       }
+      buttons.push({ id: 'shop', label: '🛒 상점', onTap: () => this.openShopUi() });
     }
     this.hud.setContext(buttons);
   }
@@ -1402,6 +1410,84 @@ export class Game {
     if (this.save.openedChests.includes(k)) return;
     this.openModal();
     this.screens.showChest(k);
+  }
+
+  openShopUi() {
+    this.openModal();
+    this.screens.showShop();
+  }
+
+  // ------------------------------------------------------------------
+  // 상점 아이템
+  // ------------------------------------------------------------------
+  get invisible() { return this.invisibleT > 0; }
+
+  buyItem(id) {
+    const it = ITEMS[id];
+    const s = this.save;
+    if (!it || s.coins < it.cost || (s.items[id] || 0) >= it.max) return false;
+    s.coins -= it.cost;
+    s.items[id] = (s.items[id] || 0) + 1;
+    this.markDirty(true);
+    this.hud.setCoins(s.coins);
+    this.audio.play('coin');
+    return true;
+  }
+
+  useItem(id) {
+    const it = ITEMS[id];
+    const s = this.save;
+    const P = this.player;
+    const b = P.body;
+    if (!it || !(s.items[id] > 0) || !P.alive || this.state !== 'play') return false;
+    if (id === 'potion' && P.hp >= P.maxHp) { this.hud.toast('체력이 가득 찼어요', 800); return false; }
+    if (id === 'cloak' && this.invisibleT > 0) return false;
+    s.items[id]--;
+    this.markDirty();
+    if (id === 'spring') {
+      b.vy = it.power;
+      b.grounded = false;
+      P.coyote = 0;
+      P.airJumped = false; // 스프링 뒤에도 2단 점프 가능
+      this.audio.play('spring');
+      this.fx.ring(b.x, b.y + 0.05, b.z, 1.6, 0x9ff7c8, 0.4, true);
+      this.fx.burst(b.x, b.y + 0.2, b.z, 0xc8ffe0, 12, 4, 0.4, 0.1);
+    } else if (id === 'cloak') {
+      this.invisibleT = it.time;
+      P.setGhost(true);
+      this.audio.play('cloak');
+      this.fx.burst(b.x, b.y + 1, b.z, 0xbff6ff, 16, 3, 0.6, 0.1);
+      this.hud.toast(`👻 ${it.time}초간 투명! 몬스터가 나를 못 본다`, 1500);
+    } else if (id === 'potion') {
+      const amt = Math.round(P.maxHp * it.heal);
+      P.heal(amt);
+      this.hud.floater({ x: b.x, y: b.y + 2, z: b.z }, `+${amt}`, '#5dff8a', 1.3);
+      this.audio.play('heal');
+    } else if (id === 'magnet') {
+      this.magnetT = it.time;
+      this.audio.play('gold');
+      this.fx.ring(b.x, b.y + 0.1, b.z, ITEMS.magnet.radius, 0xffd24a, 0.6, true);
+      this.hud.toast(`🧲 ${it.time}초간 코인 자석`, 1300);
+    }
+    return true;
+  }
+
+  updateItemEffects(dt) {
+    if (this.invisibleT > 0) {
+      this.invisibleT -= dt;
+      if (this.invisibleT <= 0) {
+        this.invisibleT = 0;
+        this.player.setGhost(false);
+        this.hud.toast('망토 효과가 끝났다', 900);
+      }
+    }
+    if (this.magnetT > 0) this.magnetT = Math.max(0, this.magnetT - dt);
+  }
+
+  endItemEffects() {
+    this.invisibleT = 0;
+    this.magnetT = 0;
+    this.player.setGhost(false);
   }
 
   openForgeUi() {
@@ -1450,7 +1536,7 @@ export class Game {
     w.level++;
     if (w === this.currentWeapon) this.player.setWeapon(w);
     const b = this.player.body;
-    this.fx.ring(b.x, b.y + 0.1, b.z, 1.5, w.level === ECON.maxLevel ? 0xffda63 : 0x64f5de, 0.6, true);
+    this.fx.ring(b.x, b.y + 0.1, b.z, 1.5, w.level >= ECON.softCapLevel ? 0xffda63 : 0x64f5de, 0.6, true);
     this.fx.burst(b.x, b.y + 1.3, b.z, 0xffda63, 12, 3.5, 0.6, 0.1);
     this.markDirty(true);
     this.hud.setCoins(this.save.coins);
@@ -1543,6 +1629,7 @@ export class Game {
     this.hud.setRun(this.playerSafe ? null : this.run, STARS.maxHits);
     this.hud.setCharge(this.charge / CHARGE.time, this.specialCd / CHARGE.cooldown, !!this.special);
     this.hud.setDash(this.save.abilities.dash, P.dashCd > 0 || (P.dashUsed && !b.grounded));
+    this.hud.renderItems(this.save.items, this.invisibleT, this.magnetT);
     const eq = this.save.equipped.map((u) => (u ? weaponByUid(this.save, u) : null));
     this.hud.renderSlots(eq, this.slot);
     if (this.debug) {

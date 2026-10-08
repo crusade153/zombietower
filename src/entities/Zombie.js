@@ -223,7 +223,7 @@ export class Zombie {
     const dz = pb.z - b.z;
     const dist = Math.hypot(dx, dz);
     const dy = pb.y - b.y;
-    const playerOk = P.alive && !g.playerSafe;
+    const playerOk = P.alive && !g.playerSafe && !g.invisible; // 투명 망토 중에는 플레이어를 못 본다
 
     if (!this.def.flee && !this.alerted && playerOk && dist < 14 && Math.abs(dy) < 6) {
       this.alerted = true;
@@ -412,7 +412,7 @@ export class Zombie {
     const d = this.def;
     this.state = 'cooldown';
     this.timer = d.cooldown / (this.phase === 2 ? 1.35 : 1);
-    if (g.playerSafe || !P.alive) return;
+    if (g.playerSafe || !P.alive || g.invisible) return;
     if (this.attackKind === 'volley') {
       g.audio.play('spit');
       const count = this.phase === 2 ? 5 : 3;

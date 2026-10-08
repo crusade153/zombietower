@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { WEAPONS, RARITY } from '../config/weapons.js';
-import { STARS } from '../config/balance.js';
+import { STARS, ITEMS, ITEM_IDS } from '../config/balance.js';
 import { icon } from './icons.js';
 import { formatTime, starCount } from '../core/StageRun.js';
 
@@ -116,6 +116,19 @@ export class Hud {
       this.comboEl.classList.add('pop');
     });
     this._set('comboLeft', Math.round(left * 40), (v) => { this.comboEl.querySelector('i').style.width = `${v * 2.5}%`; });
+  }
+
+  /** 왼쪽 아이템 칸: 가진 아이템만 표시. 사용 중인 효과는 남은 시간 */
+  renderItems(items, cloakT, magnetT) {
+    const bar = this.itemBar || (this.itemBar = document.getElementById('item-bar'));
+    const timers = { cloak: cloakT, magnet: magnetT };
+    const key = ITEM_IDS.map((id) => `${items[id] || 0}:${Math.ceil(timers[id] || 0)}`).join('|');
+    this._set('items', key, () => {
+      bar.innerHTML = ITEM_IDS.filter((id) => items[id] > 0 || timers[id] > 0).map((id) => {
+        const t = Math.ceil(timers[id] || 0);
+        return `<button class="item-btn${t ? ' active' : ''}" data-id="${id}" aria-label="${ITEMS[id].name}">${ITEMS[id].icon}<span>${items[id] || 0}</span>${t ? `<em>${t}s</em>` : ''}</button>`;
+      }).join('');
+    });
   }
 
   /** 대시 버튼: 해금해야 보이고, 재사용 대기·공중 사용 후에는 흐리게 */
@@ -242,9 +255,9 @@ export class Hud {
     for (const b of buttons) {
       const e = document.createElement('button');
       e.className = 'ctx-btn';
-      e.innerHTML = icon(b.id.includes('forge') ? 'forge' : b.id.includes('chest') ? 'bag' : 'water');
+      e.innerHTML = b.id === 'shop' ? '<span class="icon">🛒</span>' : icon(b.id.includes('forge') ? 'forge' : b.id.includes('chest') ? 'bag' : 'water');
       const label = document.createElement('span');
-      label.textContent = b.label.replace(/[📦⚒💧]/gu, '').trim();
+      label.textContent = b.label.replace(/[📦⚒💧🛒]/gu, '').trim();
       e.appendChild(label);
       e.addEventListener('pointerdown', (ev) => { ev.preventDefault(); b.onTap(); });
       this.el.ctx.appendChild(e);

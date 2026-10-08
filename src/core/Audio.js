@@ -198,6 +198,8 @@ export class AudioSys {
       case 'special': this._noise(0.35, 0.45, 600, 5000, 'bandpass'); this._tone(220, 880, 0.25, 'sawtooth', 0.16); this._tone(110, 40, 0.35, 'sine', 0.5, 0.05); break;
       case 'jump2': this._tone(420, 900, 0.14, 'triangle', 0.13); this._noise(0.12, 0.15, 3000, 6000, 'bandpass'); break;
       case 'dash': this._noise(0.18, 0.4, 800, 5000, 'bandpass'); this._tone(300, 600, 0.08, 'triangle', 0.08); break;
+      case 'spring': this._tone(180, 900, 0.3, 'sine', 0.3); this._tone(360, 1200, 0.18, 'triangle', 0.1, 0.05); break;
+      case 'cloak': this._noise(0.5, 0.25, 2000, 6000, 'bandpass'); [880, 660, 990].forEach((f, i) => this._tone(f, f, 0.14, 'sine', 0.1, i * 0.08)); break;
       case 'coin': this._tone(880, 880, 0.07, 'square', 0.1); this._tone(1320, 1320, 0.12, 'square', 0.1, 0.07); break;
       case 'heal': this._tone(520, 1040, 0.25, 'sine', 0.2); break;
       case 'hurt': this._tone(200, 70, 0.25, 'sawtooth', 0.28); this._noise(0.12, 0.3, 700, 150, 'lowpass'); break;

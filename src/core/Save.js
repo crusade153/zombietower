@@ -1,6 +1,6 @@
 // localStorage 저장 (사파리 비공개 모드 등에서 실패해도 게임은 동작)
 import { WEAPON_KINDS } from '../config/weapons.js';
-import { ABILITY_IDS } from '../config/balance.js';
+import { ABILITY_IDS, ITEMS, ITEM_IDS, ECON } from '../config/balance.js';
 const KEY = 'zombie-tower-save-v1';
 
 function freshSave() {
@@ -22,6 +22,7 @@ function freshSave() {
     stars: Array(11).fill(0), // 층별 별 비트(1 시간·2 피격·4 공중 코인), 인덱스 = 층
     bestTimes: Array(11).fill(0), // 층별 최고 기록(초), 0 = 없음
     abilities: { doubleJump: false, dash: false }, // 해금한 이동 능력
+    items: { spring: 0, cloak: 0, potion: 0, magnet: 0 }, // 소모 아이템 보유 수
     best: 0,
     muted: false,
     graphicsStyle: 'polished',
@@ -57,7 +58,7 @@ export function normalizeSave(raw) {
     ids.add(uid);
     let rarity = clamp(w.rarity, 0, 6);
     if (!raw.rarityVersion && rarity === 3) rarity = 4;
-    s.weapons.push({ uid, kind: w.kind, rarity, level: clamp(w.level, 0, 10) });
+    s.weapons.push({ uid, kind: w.kind, rarity, level: clamp(w.level, 0, ECON.levelLimit) });
   }
   if (!s.weapons.length) throw new Error('저장 파일에 유효한 무기가 없습니다.');
   s.nextUid = Math.max(integer(raw.nextUid), Math.max(...ids) + 1);
@@ -76,6 +77,7 @@ export function normalizeSave(raw) {
     const t = Number(raw.bestTimes?.[k]);
     return k >= 1 && Number.isFinite(t) && t > 0 ? Math.round(t * 10) / 10 : 0;
   });
+  s.items = Object.fromEntries(ITEM_IDS.map((id) => [id, clamp(raw.items?.[id], 0, ITEMS[id].max)]));
   s.abilities = Object.fromEntries(ABILITY_IDS.map((id) => [id, raw.abilities?.[id] === true]));
   s.finalBossDefeated = !!raw.finalBossDefeated || (!raw.rarityVersion && !!raw.cleared);
   s.bossSanctuaryUnlocked = !!raw.bossSanctuaryUnlocked;

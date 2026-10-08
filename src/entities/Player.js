@@ -95,14 +95,44 @@ export class Player {
     if (!w) return;
     this.weaponMesh = makeWeaponMesh(w);
     this.parts.hand.add(this.weaponMesh);
+    if (this._ghost) { this.setGhost(false); this.setGhost(true); }
+  }
+
+  /** 투명 망토: 몸은 거의 투명하게, 바깥 윤곽선만 빛나게 */
+  setGhost(on) {
+    if (this._ghost) {
+      for (const [mesh, mat, shadow] of this._ghost.saved) { mesh.material = mat; mesh.castShadow = shadow; }
+      for (const o of this._ghost.outlines) o.removeFromParent();
+      this._ghost.mats.forEach((m) => m.dispose());
+      this._ghost = null;
+    }
+    if (!on) return;
+    const body = new THREE.MeshBasicMaterial({ color: 0xc8f8ff, transparent: true, opacity: 0.1, depthWrite: false });
+    const line = new THREE.MeshBasicMaterial({ color: 0x8ff0ff, side: THREE.BackSide, transparent: true, opacity: 0.9 });
+    const saved = [];
+    this.root.traverse((o) => { if (o.isMesh && !o.userData.ghostOutline) saved.push([o, o.material, o.castShadow]); });
+    const outlines = [];
+    for (const [mesh] of saved) {
+      mesh.material = body;
+      mesh.castShadow = false;
+      const out = new THREE.Mesh(mesh.geometry, line);
+      out.userData.ghostOutline = true;
+      out.scale.setScalar(1.08);
+      mesh.add(out);
+      outlines.push(out);
+    }
+    this._ghost = { saved, outlines, mats: [body, line] };
   }
 
   setGraphicsStyle() {
+    const ghost = !!this._ghost;
+    if (ghost) this.setGhost(false);
     this.h = replaceHumanoid(this.h);
     this.parts = this.h.parts;
     this.weaponMesh = null;
     this.weaponKey = undefined;
     this.setWeapon(this.weapon);
+    if (ghost) this.setGhost(true);
   }
 
   startSwing(dur, kind) { this.swing = { t: 0, dur, kind }; }

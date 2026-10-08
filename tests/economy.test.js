@@ -31,15 +31,18 @@ describe('무기·강화', () => {
     }
   });
 
-  it('강화 비용은 레벨마다 증가하고 최대 레벨에서 강화 불가', () => {
+  it('강화 비용은 레벨마다 증가하고, 제한 없이 계속 강화할 수 있다(+10 이후는 완만하게)', () => {
     let prev = 0;
-    for (let l = 0; l <= ECON.maxLevel; l++) {
+    for (let l = 0; l <= 30; l++) {
       const c = upgradeCost(W('bat', 0, l));
       expect(c).toBeGreaterThan(prev);
       prev = c;
     }
-    expect(canUpgrade(W('bat', 0, ECON.maxLevel))).toBe(false);
-    expect(canUpgrade(W('bat', 0, ECON.maxLevel - 1))).toBe(true);
+    expect(canUpgrade(W('bat', 0, ECON.softCapLevel))).toBe(true);
+    expect(canUpgrade(W('bat', 0, 50))).toBe(true);
+    expect(canUpgrade(W('bat', 0, ECON.levelLimit))).toBe(false);
+    // +10 이후 한 단계 비용은 +10 비용의 2.5배를 넘지 않는다(+20 기준)
+    expect(upgradeCost(W('bat', 0, 20)) / upgradeCost(W('bat', 0, 10))).toBeLessThan(2.52); // 반올림 오차 허용
     expect(upgradeCost(W('bat', 3, 0))).toBeGreaterThan(upgradeCost(W('bat', 0, 0)));
   });
 });
@@ -90,7 +93,7 @@ describe('경제 밸런스 (참고 수치)', () => {
       return c;
     });
     const total = income.reduce((a, b) => a + b, 0);
-    const maxCost = (rarity) => Array.from({ length: ECON.maxLevel }, (_, l) => upgradeCost(W('bat', rarity, l))).reduce((a, b) => a + b, 0);
+    const maxCost = (rarity) => Array.from({ length: ECON.softCapLevel }, (_, l) => upgradeCost(W('bat', rarity, l))).reduce((a, b) => a + b, 0);
     // 1층: 첫 강화는 가능하지만 +5에는 못 미친다
     expect(income[0]).toBeGreaterThan(upgradeCost(W('bat', 0, 0)));
     const toFive = Array.from({ length: 5 }, (_, l) => upgradeCost(W('bat', 0, l))).reduce((a, b) => a + b, 0);
@@ -112,7 +115,7 @@ describe('경제 밸런스 (참고 수치)', () => {
   it('값싼 강화를 반복해서 판매해도 강화 비용 이상으로 돌려받지 않는다', () => {
     for (let rarity = 0; rarity < RARITY.length; rarity++) {
       let spent = 0;
-      for (let level = 1; level <= ECON.maxLevel; level++) {
+      for (let level = 1; level <= ECON.softCapLevel + 5; level++) {
         spent += upgradeCost(W('bat', rarity, level - 1));
         expect(sellPrice(W('bat', rarity, level)) - sellValue(W('bat', rarity))).toBeLessThanOrEqual(spent * 0.5);
       }

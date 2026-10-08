@@ -1,4 +1,5 @@
 // 터치(십자키·버튼·카메라 드래그) + 키보드(PC 테스트용) 입력
+import { ITEM_IDS } from '../config/balance.js';
 
 export class Input {
   constructor() {
@@ -11,6 +12,7 @@ export class Input {
     this.attackReleased = false; // 실제로 손을 뗀 순간만 (clearAll로는 켜지지 않음)
     this.waterPressed = false;
     this.dashPressed = false;
+    this.itemPressed = null;
     this.slotPressed = -1;
     this.interactPressed = false;
     this.camDX = 0;
@@ -45,6 +47,7 @@ export class Input {
   consumeAttackRelease() { const v = this.attackReleased; this.attackReleased = false; return v; }
   consumeWater() { const v = this.waterPressed; this.waterPressed = false; return v; }
   consumeDash() { const v = this.dashPressed; this.dashPressed = false; return v; }
+  consumeItem() { const v = this.itemPressed; this.itemPressed = null; return v; }
   consumeSlot() { const v = this.slotPressed; this.slotPressed = -1; return v; }
   consumeCam() { const r = { x: this.camDX, y: this.camDY }; this.camDX = 0; this.camDY = 0; return r; }
 
@@ -54,6 +57,7 @@ export class Input {
     this.jumpHeld = this.attackHeld = false;
     this.jumpPressed = this.attackPressed = this.attackReleased = this.waterPressed = this.dashPressed = false;
     this.slotPressed = -1;
+    this.itemPressed = null;
     this._pointers.clear();
     this.camDX = this.camDY = 0;
     document.querySelectorAll('#dpad .arm.on, .act-btn.pressed').forEach((e) => e.classList.remove('on', 'pressed'));
@@ -124,6 +128,13 @@ export class Input {
     hold('btn-attack', () => { this.attackHeld = true; this.attackPressed = true; }, () => { if (this.attackHeld) this.attackReleased = true; this.attackHeld = false; });
     hold('btn-water', () => { this.waterPressed = true; });
     hold('btn-dash', () => { this.dashPressed = true; });
+    // 아이템 칸도 동적으로 생성되므로 위임
+    document.getElementById('item-bar').addEventListener('pointerdown', (e) => {
+      const btn = e.target.closest('.item-btn');
+      if (!btn || !this.enabled) return;
+      e.preventDefault();
+      this.itemPressed = btn.dataset.id;
+    });
     // 무기 슬롯은 동적으로 생성되므로 위임
     document.getElementById('weapon-slots').addEventListener('pointerdown', (e) => {
       const slot = e.target.closest('.slot');
@@ -166,6 +177,7 @@ export class Input {
         case 'Digit1': this.slotPressed = 0; break;
         case 'Digit2': this.slotPressed = 1; break;
         case 'Digit3': this.slotPressed = 2; break;
+        case 'Digit4': case 'Digit5': case 'Digit6': case 'Digit7': this.itemPressed = ITEM_IDS[Number(e.code.slice(5)) - 4]; break;
         case 'KeyF': this.interactPressed = true; break;
         default:
       }

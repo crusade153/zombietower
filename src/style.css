@@ -303,3 +303,17 @@ button:focus-visible { outline: 3px solid #f47893; outline-offset: 4px; }
   .act-btn.dash { right: 172px; bottom: 14px; width: 54px; height: 54px; font-size: 22px; }
   .ability { min-width: 150px; padding: 8px 10px; }
 }
+/* 상점 · 아이템 칸 */
+.shop-panel { width: min(96vw, 760px); }
+.shop-h { margin: 14px 0 8px; font-size: 15px; color: #335752; }
+.shop-item .own { font-size: 12px; color: #5e9489; margin-left: 4px; }
+#item-bar { position: absolute; left: calc(var(--safe-l) + 24px); bottom: calc(var(--safe-b) + 192px); display: flex; gap: 8px; pointer-events: auto; }
+.item-btn { position: relative; width: 52px; height: 52px; border-radius: 12px; border: 2px solid #ffffffc0; background: #25464bd0; font-size: 26px; display: grid; place-items: center; touch-action: none; box-shadow: 0 3px 0 #22464d80; }
+.item-btn:active { transform: translateY(2px); }
+.item-btn span { position: absolute; right: -5px; bottom: -5px; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 10px; background: #fff7da; color: #29597c; font-size: 12px; font-weight: 900; display: grid; place-items: center; }
+.item-btn em { position: absolute; left: 50%; top: -18px; transform: translateX(-50%); font-style: normal; font-size: 12px; font-weight: 900; color: #9ff3ff; text-shadow: 0 1px 2px #1c444b; }
+.item-btn.active { border-color: #9ff3ff; box-shadow: 0 0 14px #8ff0ff; }
+@media (max-width: 700px), (max-height: 450px) and (orientation: landscape) {
+  #item-bar { left: 12px; bottom: 148px; gap: 6px; }
+  .item-btn { width: 42px; height: 42px; font-size: 21px; }
+}

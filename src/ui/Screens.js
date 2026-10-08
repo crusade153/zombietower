@@ -1,5 +1,5 @@
 import { WEAPONS, RARITY, PERK_TEXT } from '../config/weapons.js';
-import { ECON, ABILITIES, ABILITY_IDS } from '../config/balance.js';
+import { ECON, ABILITIES, ABILITY_IDS, ITEMS, ITEM_IDS } from '../config/balance.js';
 import {
   weaponDamage, weaponName, upgradeCost, canUpgrade, sellPrice, weaponDps, perks, chestOdds, weaponAppearance,
 } from '../combat/Weapons.js';
@@ -89,7 +89,8 @@ export class Screens {
       case 'upgrade': this.doUpgrade(); break;
       case 'equip': g.equipWeapon(this.sel, Number(data.slot)); this.renderForge(); break;
       case 'unequip': g.unequipWeapon(this.sel); this.renderForge(); break;
-      case 'ability': g.buyAbility(data.id); this.renderForge(); break;
+      case 'ability': g.buyAbility(data.id); this.renderShop(); break;
+      case 'buy-item': g.buyItem(data.id); this.renderShop(); break;
       case 'sell': g.sellWeapon(this.sel); this.sel = g.save.equipped.find((u) => u) || g.save.weapons[0].uid; this.renderForge(); break;
       default:
     }
@@ -287,15 +288,43 @@ export class Screens {
             <div class="row" style="justify-content:flex-start"><button class="btn sub" style="font-size:calc(var(--u)*1.9)" data-act="sell" ${s.weapons.length <= 1 ? 'disabled' : ''}>판매 <i class="coin"></i>${fmt(sellPrice(sel))}</button></div>
           </div>
         </div>
-        <div class="abilities">${ABILITY_IDS.map((id) => {
-          const a = ABILITIES[id];
-          const owned = s.abilities[id];
-          return `<button class="ability${owned ? ' owned' : ''}" data-act="ability" data-id="${id}" ${owned || s.coins < a.cost ? 'disabled' : ''}>
-            <b>${a.icon} ${esc(a.name)}</b><small>${esc(a.desc)}</small>
-            <span>${owned ? '해금 완료' : `<i class="coin"></i>${fmt(a.cost)}`}</span></button>`;
-        }).join('')}</div>
         <button class="btn" data-act="close">닫기</button>
-        <p class="hint">보관함 ${s.weapons.length} / 12 · 최대 강화 +${ECON.maxLevel} · 2단 점프는 공중에서 점프 버튼, 대시는 💨 버튼(PC: Shift)</p>
+        <p class="hint">보관함 ${s.weapons.length} / 12 · 강화 제한 없음 (+${ECON.softCapLevel} 이후 비용은 완만하게 증가) · 아이템·이동 능력은 🛒 상점</p>
+      </div>`);
+  }
+
+  // ---------- 상점 ----------
+  showShop() {
+    this.mode = 'shop';
+    this.renderShop();
+  }
+
+  renderShop() {
+    const s = this.g.save;
+    const items = ITEM_IDS.map((id) => {
+      const it = ITEMS[id];
+      const have = s.items[id] || 0;
+      const full = have >= it.max;
+      return `<button class="ability shop-item" data-act="buy-item" data-id="${id}" ${full || s.coins < it.cost ? 'disabled' : ''}>
+        <b>${it.icon} ${esc(it.name)} <small class="own">${have}/${it.max}</small></b><small>${esc(it.desc)}</small>
+        <span>${full ? '가득 참' : `<i class="coin"></i>${fmt(it.cost)}`}</span></button>`;
+    }).join('');
+    const abilities = ABILITY_IDS.map((id) => {
+      const a = ABILITIES[id];
+      const owned = s.abilities[id];
+      return `<button class="ability${owned ? ' owned' : ''}" data-act="ability" data-id="${id}" ${owned || s.coins < a.cost ? 'disabled' : ''}>
+        <b>${a.icon} ${esc(a.name)}</b><small>${esc(a.desc)}</small>
+        <span>${owned ? '해금 완료' : `<i class="coin"></i>${fmt(a.cost)}`}</span></button>`;
+    }).join('');
+    this._show(`
+      <div class="panel shop-panel">
+        <h2>🛒 상점 <span style="color:#ffd04a;margin-left:1em"><i class="coin"></i> ${fmt(s.coins)}</span></h2>
+        <h3 class="shop-h">아이템 · 각 최대 5개</h3>
+        <div class="abilities">${items}</div>
+        <h3 class="shop-h">이동 능력 · 영구 해금</h3>
+        <div class="abilities">${abilities}</div>
+        <button class="btn" data-act="close">닫기</button>
+        <p class="hint">아이템은 화면 왼쪽 아이템 칸을 눌러 사용 (PC: 4·5·6·7) · 2단 점프는 공중에서 점프, 대시는 💨 버튼(PC: Shift)</p>
       </div>`);
   }
 

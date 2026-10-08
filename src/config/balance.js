@@ -62,7 +62,10 @@ export const ECON = {
   upgradeBase: 40,
   upgradeGrowth: 1.35, // 일반 +10까지 약 2,200 · 무적 약 4,400코인
   upgradeDmgPerLevel: 0.12,
-  maxLevel: 10,
+  // 강화 제한 없음. +10까지는 1.35배씩, 그 뒤로는 +10 비용의 15%씩만 늘어 계속 강화할 수 있다
+  softCapLevel: 10,
+  upgradeLateGrowth: 0.15,
+  levelLimit: 999, // 저장 파일 안전 상한(사실상 무제한)
   zombieRewardMult: 0.75, // 몬스터가 많아진 만큼 1마리당 코인은 낮춘다
   airCoinRewardMult: 2,
   floorReward: (floor) => 40 + floor * 20,
@@ -90,10 +93,19 @@ export const THRILL = {
 
 // 이동 능력: 대장간에서 코인으로 해금(영구). 타워는 기본 점프만으로도 항상 클리어 가능하다.
 export const ABILITIES = {
-  doubleJump: { name: '2단 점프', icon: '⏫', cost: 250, desc: '공중에서 점프를 한 번 더', jumpMult: 0.85 },
-  dash: { name: '대시', icon: '💨', cost: 450, desc: '이동 방향으로 순간 돌진 (공중에서는 1회)', speed: 17, time: 0.17, cooldown: 0.6 },
+  doubleJump: { name: '2단 점프', icon: '⏫', cost: 120, desc: '공중에서 점프를 한 번 더', jumpMult: 0.85 },
+  dash: { name: '대시', icon: '💨', cost: 200, desc: '이동 방향으로 순간 돌진 (공중에서는 1회)', speed: 17, time: 0.17, cooldown: 0.6 },
 };
 export const ABILITY_IDS = Object.keys(ABILITIES);
+
+// 소모 아이템: 안전구역 상점에서 구매, 화면 왼쪽 아이템 칸(PC: 4~7)으로 사용
+export const ITEMS = {
+  spring: { name: '스프링 점프', icon: '🌀', cost: 30, max: 5, desc: '즉시 약 7m 튀어 오른다 · 공중에서도 사용 가능', power: 21 },
+  cloak: { name: '투명 망토', icon: '👻', cost: 45, max: 5, desc: '8초간 몬스터가 나를 못 본다 (윤곽만 보임)', time: 8 },
+  potion: { name: '회복 물약', icon: '🧪', cost: 25, max: 5, desc: '체력 50% 회복', heal: 0.5 },
+  magnet: { name: '코인 자석', icon: '🧲', cost: 30, max: 5, desc: '20초간 멀리 있는 코인까지 끌어당긴다', time: 20, radius: 12 },
+};
+export const ITEM_IDS = Object.keys(ITEMS);
 
 // 차지 필살기: 공격 버튼을 time초 이상 누르고 있다가 떼면 발동, 이후 cooldown초 재충전
 export const CHARGE = {
