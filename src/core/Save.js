@@ -4,17 +4,18 @@ import { ABILITY_IDS, ITEMS, ITEM_IDS, ECON } from '../config/balance.js';
 import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from '../config/achievements.js';
 import { COSMETICS, COSMETIC_KINDS, defaultCosmetics } from '../config/cosmetics.js';
 import { freshRecord, RECORD_KEYS, BOSS_TYPES } from './Achievements.js';
+import { fusionPreview } from '../combat/Weapons.js';
 const KEY = 'zombie-tower-save-v1';
 
 function freshSave() {
   return {
     v: 1,
-    rarityVersion: 2,
+    rarityVersion: 3,
     econVersion: 2, // 2: 코인 가치 상향(보상 축소·강화비 인상)
     seed: (Math.random() * 1e9) | 0,
     coins: 0,
     nextUid: 2,
-    weapons: [{ uid: 1, kind: 'bat', rarity: 0, level: 0 }],
+    weapons: [{ uid: 1, kind: 'bat', rarity: 1, level: 0 }],
     equipped: [1, null, null],
     lastSafe: 0, // 도착한 가장 높은 안전구역
     resumeSafe: 0, // 선택한 시작 지점 (최고 기록과 별도)
@@ -64,8 +65,9 @@ export function normalizeSave(raw) {
     const uid = integer(w?.uid);
     if (!w || !WEAPON_KINDS.includes(w.kind) || uid <= 0 || ids.has(uid) || s.weapons.length >= 12) continue;
     ids.add(uid);
-    let rarity = clamp(w.rarity, 0, 6);
+    let rarity = clamp(w.rarity, 0, raw.rarityVersion >= 3 ? 7 : 6);
     if (!raw.rarityVersion && rarity === 3) rarity = 4;
+    if (!(raw.rarityVersion >= 3)) rarity = [1, 3, 4, 6, 5, 6, 7][rarity];
     s.weapons.push({ uid, kind: w.kind, rarity, level: clamp(w.level, 0, ECON.levelLimit) });
   }
   if (!s.weapons.length) throw new Error('저장 파일에 유효한 무기가 없습니다.');
@@ -79,7 +81,7 @@ export function normalizeSave(raw) {
   });
   if (!equipped.size) s.equipped[0] = s.weapons[0].uid;
   s.openedChests = [...new Set((Array.isArray(raw.openedChests) ? raw.openedChests : []).map(value => integer(value)).filter(k => k >= 1 && k <= 10))];
-  s.rarityVersion = 2;
+  s.rarityVersion = 3;
   s.stars = Array.from({ length: 11 }, (_, k) => (k >= 1 ? clamp(raw.stars?.[k], 0, 7) : 0));
   s.bestTimes = Array.from({ length: 11 }, (_, k) => {
     const t = Number(raw.bestTimes?.[k]);
@@ -154,4 +156,20 @@ export function addWeapon(save, w) {
 
 export function weaponByUid(save, uid) {
   return save.weapons.find((w) => w.uid === uid) || null;
+}
+
+export function fuseWeapons(save, uids) {
+  if (!Array.isArray(uids) || uids.length !== 3 || new Set(uids).size !== 3) return null;
+  const materials = uids.map(uid => weaponByUid(save, uid));
+  if (materials.some(w => !w)) return null;
+  const result = fusionPreview(materials);
+  const consumed = new Set(uids);
+  const slot = save.equipped.findIndex(uid => consumed.has(uid));
+  save.weapons = save.weapons.filter(w => !consumed.has(w.uid));
+  save.equipped = save.equipped.map(uid => consumed.has(uid) ? null : uid);
+  const w = { ...result, uid: save.nextUid++ };
+  save.weapons.push(w);
+  const destination = slot >= 0 ? slot : save.equipped.indexOf(null);
+  if (destination >= 0) save.equipped[destination] = w.uid;
+  return w;
 }

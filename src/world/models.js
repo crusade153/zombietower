@@ -3,7 +3,8 @@ import { makeClassicHumanoid } from './ClassicHumanoid.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { weaponAppearance } from '../combat/Weapons.js';
-import { RARITY } from '../config/weapons.js';
+import { RARITY, WEAPONS, baseWeaponKind } from '../config/weapons.js';
+import { radialTexture } from './Glow.js';
 
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 16);
@@ -58,6 +59,38 @@ export function batchMeshes(group) {
     const mesh = new THREE.Mesh(mergeGeometries(geos, false), material);
     geos.forEach((geo) => geo.dispose());
     mesh.castShadow = mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+  return group;
+}
+
+/** Merge stationary meshes without consuming labels, halos or animated props. */
+export function batchStaticMeshes(group, moving = new Set()) {
+  group.updateMatrixWorld(true);
+  const inverse = group.matrixWorld.clone().invert();
+  const batches = new Map();
+  const meshes = [];
+  group.traverse((mesh) => {
+    if (!mesh.isMesh || mesh.isInstancedMesh || Array.isArray(mesh.material)) return;
+    for (let parent = mesh; parent && parent !== group; parent = parent.parent) if (moving.has(parent)) return;
+    meshes.push(mesh);
+  });
+  for (const mesh of meshes) {
+    const key = `${mesh.material.uuid}:${mesh.castShadow}:${mesh.receiveShadow}`;
+    if (!batches.has(key)) batches.set(key, { geos: [], source: mesh });
+    const geo = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+    geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inverse, mesh.matrixWorld));
+    batches.get(key).geos.push(geo);
+    mesh.removeFromParent();
+  }
+  const retained = new Set([boxGeo, cylGeo, roundGeo, sphereGeo, roundGeoLow, sphereGeoLow]);
+  group.traverse((o) => { if (o.geometry) retained.add(o.geometry); });
+  for (const geo of new Set(meshes.map((m) => m.geometry))) if (!retained.has(geo) && !geo.userData.shared) geo.dispose();
+  for (const { geos, source } of batches.values()) {
+    const mesh = new THREE.Mesh(mergeGeometries(geos, false), source.material);
+    geos.forEach((geo) => geo.dispose());
+    mesh.castShadow = source.castShadow;
+    mesh.receiveShadow = source.receiveShadow;
     group.add(mesh);
   }
   return group;
@@ -175,11 +208,12 @@ export function disposeWorld(scene) {
   const materials = new Set();
   const textures = new Set();
   scene.traverse((o) => {
+    if (o.isInstancedMesh) o.dispose();
     if (o.geometry && !sharedGeometries.has(o.geometry) && !o.geometry.userData.shared) geometries.add(o.geometry);
     for (const m of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []) {
       if (sharedMaterials.has(m) || m.userData.shared) continue;
       materials.add(m);
-      for (const value of Object.values(m)) if (value?.isTexture) textures.add(value);
+      for (const value of Object.values(m)) if (value?.isTexture && !value.userData.shared) textures.add(value);
     }
     if (o.isLight && o.shadow) o.shadow.dispose();
   });
@@ -313,7 +347,14 @@ function makePolishedHumanoid({
     const g = new THREE.Group();
     g.position.set(side * 0.46, 1.23, 0);
     g.add(rounded(0.25, 0.36, 0.27, mats.shirt, 0, -0.17, 0));
-    g.add(rounded(0.22, 0.22, 0.24, zombie ? mats.skin : white, 0, -0.44, 0));
+    if (zombie) g.add(rounded(0.22, 0.22, 0.24, mats.skin, 0, -0.44, 0));
+    else {
+      const forearm = new THREE.Group();
+      forearm.position.y = -0.33;
+      forearm.add(rounded(0.22, 0.22, 0.24, white, 0, -0.11, 0));
+      g.add(forearm);
+      g.userData.forearm = forearm;
+    }
     return g;
   };
   const makeLeg = (side) => {
@@ -329,8 +370,8 @@ function makePolishedHumanoid({
   const legL = makeLeg(-1);
   const legR = makeLeg(1);
   const hand = new THREE.Group();
-  hand.position.set(0, -0.52, 0);
-  armR.add(hand);
+  hand.position.set(0, zombie ? -0.52 : -0.19, 0);
+  (armR.userData.forearm || armR).add(hand);
   model.add(torso, head, armL, armR, legL, legR);
   // Merge rigid pieces by material; the head and each limb can still animate.
   for (const part of [torso, head, armL, armR, legL, legR]) {
@@ -351,23 +392,24 @@ function makePolishedHumanoid({
   }
   // 몬스터는 발밑 원형 그림자(blob)가 있으므로 실시간 그림자를 그리지 않는다 (그림자 패스 비용 절감)
   model.traverse((o) => { if (o.isMesh) { o.castShadow = !zombie; o.receiveShadow = true; } });
-  return { root, model, parts: { head, torso, armL, armR, legL, legR, hand }, materials: ownMaterials ? owned : Object.values(mats), eyeMat };
+  return { root, model, parts: { head, torso, armL, armR, legL, legR, hand, elbowL: armL.userData.forearm, elbowR: armR.userData.forearm }, materials: ownMaterials ? owned : Object.values(mats), eyeMat };
 }
 
 /** 무기 모델. 근접: +Z로 뻗음(팔을 앞으로 들면 위를 향함). 총: −Y로 뻗음(팔을 앞으로 들면 정면). */
 export function makeWeaponMesh(weapon, accent = 0xc9ced6) {
   const w = typeof weapon === 'string' ? { kind: weapon, rarity: 0, level: 0 } : weapon;
-  const kind = w.kind;
+  const kind = baseWeaponKind(w);
+  const fusion = !!WEAPONS[w.kind].fusion;
   const look = weaponAppearance(w);
   const { tier, level } = look;
   if (typeof weapon !== 'string') accent = Number.parseInt(RARITY[w.rarity].color.slice(1), 16);
   const g = new THREE.Group();
   const wood = lambert(0xa96235);
   const dark = metal(0x263443, 0.4);
-  const steel = metal(tier === 4 ? 0xffcd54 : 0xc3d5e1);
+  const steel = metal(tier >= 3 ? 0xffcd54 : 0xc3d5e1);
   const acc = metal(accent);
-  const energyColor = Number.parseInt(look.color.slice(1), 16);
-  const energy = lambert(energyColor, tier >= 2 ? energyColor : 0);
+  const energyColor = Number.parseInt((fusion && tier < 2 ? WEAPONS[w.kind].color : look.color).slice(1), 16);
+  const energy = lambert(energyColor, tier >= 2 || fusion ? energyColor : 0);
   const grip = lambert(0x18232e);
   const band = (z, radius = 0.145) => {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, 0.026, 8, 20), tier >= 2 ? energy : steel);
@@ -375,7 +417,41 @@ export function makeWeaponMesh(weapon, accent = 0xc9ced6) {
     g.add(ring);
   };
   g.userData.appearance = look;
-  switch (kind) {
+  if (fusion && kind === 'bat') {
+    g.add(rounded(0.12, 0.12, 1.35, grip, 0, 0, 0.52));
+    g.add(rounded(0.96, 0.38, 0.5, dark, 0, 0, 1.1));
+    for (const side of [-1, 1]) {
+      g.add(rounded(0.18, 0.5, 0.64, steel, side * 0.5, 0, 1.1));
+      g.add(rounded(0.04, 0.42, 0.47, energy, side * 0.61, 0, 1.1));
+    }
+    g.add(sphere(0.19, 0.24, 0.19, energy, 0, 0.2, 1.1));
+    for (const z of [0.22, 0.5, 0.81]) band(z, 0.1);
+  } else if (fusion && kind === 'axe') {
+    g.add(rounded(0.12, 0.12, 1.62, dark, 0, 0, 0.66));
+    for (const side of [-1, 1]) {
+      const blade = new THREE.Shape();
+      blade.moveTo(0, 0.86); blade.quadraticCurveTo(0.65, 0.57, 0.91, 1.58);
+      blade.quadraticCurveTo(0.42, 1.12, 0, 1.2); blade.closePath();
+      const head = new THREE.Mesh(new THREE.ExtrudeGeometry(blade, { depth: 0.085, bevelEnabled: true, bevelSize: 0.025, bevelThickness: 0.02, bevelSegments: 1, curveSegments: 12 }), steel);
+      head.rotation.x = Math.PI / 2; head.position.y = 0.04; head.scale.x = side; g.add(head);
+      const edge = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.035, 6, 20, Math.PI * 0.8), energy);
+      edge.rotation.x = Math.PI / 2; edge.position.set(side * 0.25, -0.08, 1.08); edge.scale.x = side; g.add(edge);
+    }
+    g.add(sphere(0.16, 0.15, 0.18, energy, 0, 0, 1.08));
+    for (const z of [0.2, 0.5, 0.8]) band(z, 0.1);
+  } else if (fusion && kind === 'whip') {
+    g.add(rounded(0.18, 0.18, 0.4, dark, 0, 0, 0.13));
+    for (let i = 0; i < 12; i++) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.082, 0.025, 6, 10), i % 3 ? steel : energy);
+      ring.position.set(Math.sin(i * 0.7) * 0.16, 0, 0.4 + i * 0.12);
+      ring.rotation.set(i % 2 ? Math.PI / 2 : 0, 0, 0); g.add(ring);
+    }
+    g.add(new THREE.Mesh(new THREE.OctahedronGeometry(0.19), energy)).position.set(0.16, 0, 1.88);
+    for (const side of [-1, 1]) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.32, 6), steel);
+      spike.rotation.z = side * Math.PI / 2; spike.position.set(side * 0.19 + 0.16, 0, 1.88); g.add(spike);
+    }
+  } else switch (kind) {
     case 'bat':
       g.add(rounded(0.11, 0.11, 0.4, grip, 0, 0, 0.14));
       g.add(rounded(0.25, 0.25, 0.78, tier ? steel : wood, 0, 0, 0.71));
@@ -419,7 +495,8 @@ export function makeWeaponMesh(weapon, accent = 0xc9ced6) {
     case 'rifle':
     case 'shotgun': {
       const long = kind !== 'pistol';
-      const length = long ? 0.96 : 0.48;
+      const length = fusion ? (long ? 1.28 : 0.75) : (long ? 0.96 : 0.48);
+      g.userData.muzzle = new THREE.Vector3(0, -length - 0.04, 0.035);
       g.add(rounded(0.19, length * 0.55, 0.21, tier ? steel : dark, 0, -length * 0.29, 0.015));
       g.add(rounded(0.12, 0.22, 0.22, grip, 0, 0.03, -0.12));
       g.add(cyl(0.045, length * 0.5, dark, 0, -length * 0.74, 0.035));
@@ -439,13 +516,50 @@ export function makeWeaponMesh(weapon, accent = 0xc9ced6) {
       }
       if (tier >= 2) for (const side of [-1, 1]) g.add(rounded(0.025, length * 0.5, 0.035, energy, side * 0.105, -length * 0.42, 0.05));
       if (tier >= 3) g.add(rounded(0.25, 0.15, 0.25, steel, 0, -length * 0.81, 0.02));
+      if (fusion) {
+        for (const side of [-1, 1]) {
+          g.add(rounded(0.085, length * 0.75, 0.16, dark, side * 0.2, -length * 0.55, 0.035));
+          g.add(rounded(0.04, length * 0.65, 0.05, energy, side * 0.24, -length * 0.55, 0.12));
+        }
+        if (kind === 'shotgun') for (const x of [-0.16, 0, 0.16]) {
+          g.add(cyl(0.075, 0.63, steel, x, -length * 0.79, 0.035));
+          g.add(cyl(0.082, 0.06, energy, x, -length, 0.035));
+        }
+        else for (let i = 0; i < 4; i++) {
+          const coil = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.035, 6, 16), energy);
+          coil.rotation.x = Math.PI / 2; coil.position.set(0, -length * (0.53 + i * 0.12), 0.035); g.add(coil);
+        }
+        g.add(sphere(0.1, 0.13, 0.1, energy, 0, -length * 0.3, 0.22));
+      }
       break;
     }
     default:
   }
+  if (tier >= 2 && kind !== 'pistol' && kind !== 'rifle' && kind !== 'shotgun') {
+    for (const side of [-1, 1]) g.add(rounded(0.035, 0.075, fusion ? 0.95 : 0.7, energy, side * 0.09, 0.055, 0.53));
+  }
+  if (tier >= 2) {
+    for (const side of [-1, 1]) {
+      if (WEAPONS[w.kind].kind === 'gun') {
+        const stabilizer = rounded(0.14, 0.46, 0.055, dark, side * 0.28, -0.42, -0.08);
+        stabilizer.rotation.z = side * 0.25; g.add(stabilizer);
+        const rune = rounded(0.07, 0.34, 0.025, energy, side * 0.29, -0.42, -0.115);
+        rune.rotation.z = side * 0.25; g.add(rune);
+      } else {
+        const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.12), energy);
+        core.position.set(side * 0.17, 0, 0.44); g.add(core);
+      }
+    }
+  }
+  if (tier >= 3) for (const side of [-1, 1]) {
+    const fin = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.5, 5), steel);
+    if (WEAPONS[w.kind].kind === 'gun') { fin.position.set(side * 0.2, -0.45, 0.17); fin.rotation.z = -side * 0.6; }
+    else { fin.position.set(side * 0.2, 0, 0.73); fin.rotation.z = -side * Math.PI / 2; }
+    g.add(fin);
+  }
   batchMeshes(g);
   g.scale.setScalar(1 + level * 0.015);
-  if (tier >= 4) {
+  if (tier >= 3 || fusion) {
     const aura = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.025, 8, 32), new THREE.MeshBasicMaterial({ color: energyColor, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending }));
     if (['pistol', 'rifle', 'shotgun'].includes(kind)) { aura.position.y = -0.4; aura.rotation.x = Math.PI / 2; }
     else aura.position.z = 0.75;
@@ -459,7 +573,8 @@ export function makeBlob(radius = 0.55) {
   const geo = new THREE.CircleGeometry(radius, 20);
   geo.rotateX(-Math.PI / 2);
   const mat = new THREE.MeshBasicMaterial({
-    color: 0x000000, transparent: true, opacity: 0.45, depthWrite: false,
+    color: modelStyle === 'classic' ? 0x000000 : 0x152333, map: modelStyle === 'classic' ? null : radialTexture(),
+    transparent: true, opacity: modelStyle === 'classic' ? 0.45 : 0.38, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
   });
   const m = new THREE.Mesh(geo, mat);

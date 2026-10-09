@@ -1,4 +1,4 @@
-import { WEAPONS } from '../config/weapons.js';
+import { WEAPONS, baseWeaponKind } from '../config/weapons.js';
 import { weaponDamage, hasPerk } from './Weapons.js';
 import { rayBox } from '../core/physics.js';
 
@@ -48,7 +48,7 @@ export function startSpecial(g, w) {
   g.cam.shake = Math.max(g.cam.shake, 0.45);
   g.fx.ring(b.x, b.y + 0.05, b.z, 2.2, 0xffd04a, 0.4, true);
 
-  switch (w.kind) {
+  switch (baseWeaponKind(w)) {
     case 'bat': {
       P.startSwing(0.5, 'melee');
       g.audio.play('swing-bat');
@@ -175,7 +175,7 @@ export function updateSpecial(g, dt) {
       const t = g.findTarget(30, 60, 10);
       if (t) P.faceDir(t.body.x - b.x, t.body.z - b.z, 0.2);
       P.startSwing(0.1, 'gun');
-      const d = WEAPONS.rifle;
+      const d = WEAPONS[sp.w.kind];
       g.fireGun(sp.w, { ...d, spread: 3.5, knockback: 2 }, t);
     }
   }

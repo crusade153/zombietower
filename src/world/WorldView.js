@@ -4,13 +4,16 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { TOWER } from '../config/balance.js';
 import { THEMES, themeIndexForStage, themeForStage } from '../config/themes.js';
 import {
-  makeChest, makeForge, makeWaterStation, makeFlag, lambert, metal, box, cyl, rounded, batchMeshes, getModelStyle, disposeWorld,
+  makeChest, makeForge, makeWaterStation, makeFlag, lambert, metal, box, cyl, rounded, batchMeshes, batchStaticMeshes, getModelStyle, disposeWorld,
 } from './models.js';
 import { makeWallTextures } from './WallTextures.js';
 import { blinkState } from './Platforms.js';
 import { spinnerAngle, fireState } from './Hazards.js';
+import { makeGlow } from './Glow.js';
+import { makeFrostTexture, makeFlameMaterial } from './SurfaceMaterials.js';
 
 const WALL_R = TOWER.wallRadius;
+const ATMOSPHERE = [0x294d68, 0x263b58, 0x383d61, 0x294451, 0x55798f];
 
 function typeColor(p, theme, stage) {
   const c = new THREE.Color();
@@ -41,14 +44,15 @@ function colorBox(p, color, atBase) {
     : new RoundedBoxGeometry(p.hx * 2, p.hy * 2, p.hz * 2, 1, Math.min(0.16, p.hy * 0.5));
   const normal = g.attributes.normal;
   const pos = g.attributes.position;
-  const top = color.clone().lerp(new THREE.Color(0xf4fff5), p.type === 'safe' ? 0.5 : 0.06);
-  const side = color.clone().multiplyScalar(0.8);
+  const classic = getModelStyle() === 'classic';
+  const top = color.clone().lerp(new THREE.Color(0xf4fff5), p.type === 'safe' ? (classic ? 0.5 : 0.2) : 0.06);
+  const side = color.clone().multiplyScalar(classic ? 0.8 : 0.38);
   const arr = new Float32Array(pos.count * 3);
   const face = new THREE.Color();
   const edge = new THREE.Color(0xd3fff0);
   for (let i = 0; i < pos.count; i++) {
     face.copy(side).lerp(top, Math.max(0, normal.getY(i)));
-    if (Math.abs(normal.getY(i)) < 0.4 && pos.getY(i) > p.hy * 0.35) face.lerp(edge, 0.62);
+    if (Math.abs(normal.getY(i)) < 0.4 && pos.getY(i) > p.hy * 0.35) face.lerp(edge, classic ? 0.62 : 0.3);
     arr[i * 3] = face.r; arr[i * 3 + 1] = face.g; arr[i * 3 + 2] = face.b;
   }
   g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
@@ -131,14 +135,15 @@ export class WorldView {
   _build() {
     const { scene, tower } = this;
     const th0 = THEMES[0];
-    scene.background = new THREE.Color(th0.fog);
-    scene.fog = new THREE.Fog(th0.fog, 35, 155);
-    this.fogTarget = new THREE.Color(th0.fog);
+    const fogColor = this.classic ? th0.fog : ATMOSPHERE[0];
+    scene.background = new THREE.Color(fogColor);
+    scene.fog = new THREE.Fog(fogColor, this.classic ? 35 : 28, this.classic ? 155 : 140);
+    this.fogTarget = new THREE.Color(fogColor);
     this.skyTarget = new THREE.Color(th0.sky);
 
-    this.hemi = new THREE.HemisphereLight(th0.sky, 0x43566e, 1.1);
+    this.hemi = new THREE.HemisphereLight(th0.sky, 0x243349, this.classic ? 1.1 : 0.65);
     scene.add(this.hemi);
-    const sun = new THREE.DirectionalLight(0xfff2df, 2.6);
+    const sun = new THREE.DirectionalLight(this.classic ? 0xfff2df : 0xd8efff, this.classic ? 2.6 : 2.5);
     sun.position.set(-30, 80, 20);
     scene.add(sun);
     this.sun = sun;
@@ -147,8 +152,9 @@ export class WorldView {
     Object.assign(sun.shadow.camera, { left: -18, right: 18, top: 18, bottom: -18, near: 1, far: 90 });
     sun.shadow.normalBias = 0.08;
     sun.shadow.bias = -0.0003;
+    sun.shadow.radius = this.touchDevice ? 1.5 : 2.5;
     scene.add(sun.target);
-    const rim = new THREE.DirectionalLight(0xa4dfff, 1.0);
+    const rim = new THREE.DirectionalLight(0x66bdff, this.classic ? 1.0 : 1.6);
     rim.position.set(30, 20, -40);
     scene.add(rim);
     // 용암이 벽·발판을 아래에서 붉게 비춘다
@@ -185,10 +191,12 @@ export class WorldView {
     const topY = tower.safeZones[tower.safeZones.length - 1].maxY;
     const pillarTop = topY + 14;
     const pillarH = pillarTop + 100;
-    scene.add(cyl(TOWER.pillarRadius * 0.65, pillarH, metal(0x466276, 0.4), 0, (pillarTop - 100) / 2, 0));
+    scene.add(cyl(TOWER.pillarRadius * 0.65, pillarH, metal(this.classic ? 0x466276 : 0x183550, 0.32), 0, (pillarTop - 100) / 2, 0));
     const rings = [];
     for (let y = 4; y < topY + 20; y += 7) rings.push(y);
-    const ringMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 24), lambert(0x92dbcf), rings.length);
+    const coreRing = this.classic ? lambert(0x92dbcf) : lambert(0x7fedff, 0x2b8caf);
+    if (!this.classic) coreRing.emissiveIntensity = 1.4;
+    const ringMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 24), coreRing, rings.length);
     const m4 = new THREE.Matrix4();
     rings.forEach((y, i) => {
       m4.compose(new THREE.Vector3(0, y, 0), new THREE.Quaternion(), new THREE.Vector3(TOWER.pillarRadius + 0.35, 0.5, TOWER.pillarRadius + 0.35));
@@ -211,10 +219,11 @@ export class WorldView {
 
     const solidMat = this.classic
       ? new THREE.MeshLambertMaterial({ vertexColors: true })
-      : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.12 });
+      : new THREE.MeshStandardMaterial({ vertexColors: true, map: makeFrostTexture(), roughness: 0.3, metalness: 0.2 });
     const lineMat = new THREE.LineBasicMaterial({ color: 0xeafff3, transparent: true, opacity: 0.35 });
     const chevron = makeChevronTexture();
-    const torchMat = new THREE.MeshBasicMaterial({ color: 0xffb040 });
+    const torchMat = this.classic ? new THREE.MeshBasicMaterial({ color: 0xffb040 }) : makeFlameMaterial();
+    this.flameMaterial = torchMat;
 
     // 안전구역 0..10
     tower.safeZones.forEach((p, k) => {
@@ -301,6 +310,7 @@ export class WorldView {
             const flame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.6, 6), torchMat);
             flame.position.set(x, p.maxY + 1.8, z);
             group.add(flame);
+            if (!this.classic) flame.add(makeGlow(0xffa445, 1.8, 0.26));
             this.torches.push({ flame, ph: Math.random() * 6 });
           }
         }
@@ -344,13 +354,15 @@ export class WorldView {
   _platformDetail(p) {
     const g = new THREE.Group();
     if (this.classic) return g;
-    const rim = metal(0x506b7b, 0.45);
-    const light = lambert(p.type === 'checkpoint' ? 0x78ffc5 : 0xb9f4f1, 0x183d40);
+    const rim = metal(0x254a6a, 0.3);
+    const light = lambert(p.type === 'checkpoint' ? 0x78ffc5 : 0x7be8ff, p.type === 'checkpoint' ? 0x2bffb0 : 0x46c8ed);
+    light.emissiveIntensity = 1.6;
     const y = p.hy + 0.012;
     // Flush inlays and underside braces leave the jumping surface clear.
     for (const side of [-1, 1]) {
       g.add(box(p.hx * 1.65, 0.018, 0.045, light, 0, y, side * p.hz * 0.82));
       g.add(rounded(p.hx * 1.75, 0.14, 0.12, rim, 0, -p.hy + 0.04, side * p.hz * 0.78));
+      g.add(box(p.hx * 1.8, 0.055, 0.025, light, 0, -p.hy * 0.12, side * (p.hz - 0.025)));
     }
     if (p.type !== 'beam' && !p.belt) {
       for (const x of [-1, 1]) for (const z of [-1, 1]) g.add(cyl(0.06, 0.02, rim, x * p.hx * 0.82, y + 0.005, z * p.hz * 0.65));
@@ -371,7 +383,7 @@ export class WorldView {
         }
         const { map, glow } = makeWallTextures(idx);
         texCache[idx] = new THREE.MeshStandardMaterial({
-          map, bumpMap: map, bumpScale: 0.18, emissiveMap: glow, emissive: 0xffffff, emissiveIntensity: 0.22, side: THREE.BackSide, roughness: 0.36, metalness: 0.16,
+          map, color: 0x718ca8, bumpMap: map, bumpScale: 0.26, emissiveMap: glow, emissive: 0x8ae6ff, emissiveIntensity: 0.75, side: THREE.BackSide, roughness: 0.76, metalness: 0.08,
         });
       }
       return texCache[idx];
@@ -391,7 +403,7 @@ export class WorldView {
       this.stageGroups[s].add(wall);
 
       // 버트레스 기둥 (20개)
-      const pil = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), lambert(theme.wall), 20);
+      const pil = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), this.classic ? lambert(theme.wall) : metal(0x455f7a, 0.58), 20);
       const m = new THREE.Matrix4();
       const q = new THREE.Quaternion();
       for (let i = 0; i < 20; i++) {
@@ -441,9 +453,9 @@ export class WorldView {
     const group = this.stageGroups[stage];
     const baseY = this.tower.safeZones[stage - 1].maxY;
     const decor = new THREE.Group();
-    const stone = lambert(theme.wall);
+    const stone = lambert(0x587b9e);
     const trim = metal(theme.accent, 0.35);
-    const glass = new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.65, metalness: 0.35, roughness: 0.2 });
+    const glass = new THREE.MeshStandardMaterial({ color: 0x69bcdf, emissive: theme.accent, emissiveIntensity: 1.7, metalness: 0.18, roughness: 0.2 });
     for (let i = 0; i < 10; i++) {
       const angle = i * Math.PI / 5;
       const window = new THREE.Group();
@@ -480,9 +492,18 @@ export class WorldView {
     const entry = this.tower.safeZones[stage - 1];
     const angle = Math.atan2(entry.z, entry.x);
     crystal.position.set(Math.cos(angle) * 8, baseY + 8, Math.sin(angle) * 8);
-    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(1.25), new THREE.MeshStandardMaterial({ color: theme.accent, emissive: theme.accent, emissiveIntensity: 0.6, roughness: 0.18, metalness: 0.5 }));
+    const gemMaterial = new THREE.MeshStandardMaterial({ color: 0x32a9d0, emissive: 0x2585bd, emissiveIntensity: 0.4, roughness: 0.12, metalness: 0.45, flatShading: true });
+    gemMaterial.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', `
+        float rimGlow = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 2.0);
+        outgoingLight += vec3(0.15, 0.85, 1.6) * rimGlow;
+        #include <opaque_fragment>
+      `);
+    };
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(1.25), gemMaterial);
     gem.scale.y = 1.8;
     crystal.add(gem);
+    crystal.add(makeGlow(theme.accent, 5, 0.22));
     for (const tilt of [-0.5, 0.5]) {
       const halo = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.07, 8, 48), trim);
       halo.rotation.x = Math.PI / 2 + tilt;
@@ -518,7 +539,7 @@ export class WorldView {
         group.add(glow);
         const flame = new THREE.Mesh(
           new THREE.ConeGeometry(0.75, 3.4, 10, 1, true),
-          new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }),
+          this.classic ? new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }) : this.flameMaterial,
         );
         flame.position.set(x, p.maxY + 1.7, z);
         flame.visible = false;
@@ -533,18 +554,27 @@ export class WorldView {
     const sz = p.safe;
     // Tile seams and mint edging make the landing area read as a real place.
     const tileMat = lambert(0x85bdb9);
+    const edgeMat = this.classic ? lambert(0x79e8c5, 0x18372d) : lambert(0x78fff0, 0x42dfc2);
+    if (!this.classic) edgeMat.emissiveIntensity = 1.8;
     for (let d = -6; d <= 6; d += 2) {
       g.add(box(0.025, 0.012, p.hz * 2 - 0.5, tileMat, p.x + d, p.maxY + 0.007, p.z));
       g.add(box(p.hx * 2 - 0.5, 0.012, 0.025, tileMat, p.x, p.maxY + 0.007, p.z + d));
     }
     for (const [x, z, w, d] of [[0, -p.hz + 0.12, p.hx * 2, 0.18], [0, p.hz - 0.12, p.hx * 2, 0.18], [-p.hx + 0.12, 0, 0.18, p.hz * 2], [p.hx - 0.12, 0, 0.18, p.hz * 2]]) {
-      g.add(rounded(w, 0.08, d, lambert(0x79e8c5, 0x18372d), p.x + x, p.maxY + 0.03, p.z + z));
+      g.add(rounded(w, 0.08, d, edgeMat, p.x + x, p.maxY + 0.03, p.z + z));
     }
     for (const [sx, sz2] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
       const x = p.x + sx * (p.hx - 0.7);
       const z = p.z + sz2 * (p.hz - 0.7);
       g.add(cyl(0.22, 1.7, lambert(0x6c8391), x, p.maxY + 0.85, z));
-      g.add(new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), new THREE.MeshBasicMaterial({ color: theme.accent })).translateX(x).translateY(p.maxY + 2.4).translateZ(z));
+      const lamp = this.classic ? new THREE.MeshBasicMaterial({ color: theme.accent })
+        : new THREE.MeshStandardMaterial({ color: 0x8ffff0, emissive: theme.accent, emissiveIntensity: 2.0, roughness: 0.2 });
+      g.add(new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), lamp).translateX(x).translateY(p.maxY + 2.4).translateZ(z));
+      if (!this.classic) {
+        const halo = makeGlow(theme.accent, 2.2, 0.3);
+        halo.position.set(x, p.maxY + 2.4, z);
+        g.add(halo);
+      }
     }
     const label = makeLabel(sz.bossPrep ? '최종 결전 · 준비 구역' : k === 0 ? '출발' : (k === TOWER.stages ? '정상!' : `안전구역 ${k}`), '#f6fff0', [sz.bossPrep ? 5 : 2.7, 0.68]);
     label.position.set(p.x + p.next.x * 4 - p.next.z * 3, p.maxY + 2.7, p.z + p.next.z * 4 + p.next.x * 3);
@@ -554,6 +584,10 @@ export class WorldView {
     forge.group.position.set(sz.forge.x - 1.0, p.maxY, sz.forge.z);
     g.add(forge.group);
     const water = makeWaterStation();
+    if (!this.classic) {
+      for (const prop of [forge.group, water]) prop.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });
+      forge.fire.castShadow = false;
+    }
     water.position.set(sz.water.x, p.maxY, sz.water.z);
     g.add(water);
     const waterLabel = makeLabel('충전', '#a8ecff', [1.5, 0.4]);
@@ -565,6 +599,7 @@ export class WorldView {
     const entry = { k, forge, water, chest: null };
     if (k >= 1 && !sz.bossPrep) {
       const chest = makeChest();
+      if (!this.classic) chest.group.traverse((o) => { if (o.isMesh && !o.material.transparent) o.castShadow = o.receiveShadow = true; });
       chest.group.position.set(sz.chest.x, p.maxY, sz.chest.z);
       chest.group.rotation.y = Math.atan2(p.x - sz.chest.x, p.z - sz.chest.z);
       g.add(chest.group);
@@ -572,7 +607,7 @@ export class WorldView {
     }
     if (sz.bossPrep) this.bossSanctuaryProps = entry;
     else this.safeProps[k] = entry;
-    return g;
+    return batchStaticMeshes(g, new Set([forge.fire, entry.chest?.group].filter(Boolean)));
   }
 
   /** 현재 층 기준 ±1 층만 보이게 */
@@ -585,7 +620,7 @@ export class WorldView {
     if (idx === this.theme) return;
     this.theme = idx;
     const th = THEMES[idx];
-    this.fogTarget.set(th.fog);
+    this.fogTarget.set(this.classic ? th.fog : ATMOSPHERE[idx]);
     this.skyTarget.set(th.sky);
   }
 
@@ -599,6 +634,7 @@ export class WorldView {
   sync(time, center, lavaY) {
     const dt = Math.min(0.1, Math.max(0, time - this._lastTime));
     this._lastTime = time;
+    if (this.flameMaterial.uniforms) this.flameMaterial.uniforms.uTime.value = time;
     if (center) {
       this.sun.position.set(center.x - 18, center.y + 30, center.z + 16);
       this.sun.target.position.set(center.x, center.y, center.z);

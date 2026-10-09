@@ -1,4 +1,5 @@
 // WebAudio로 만든 간단한 효과음 (파일 없음). iOS는 첫 터치에서 unlock() 필요.
+import { WEAPONS } from '../config/weapons.js';
 
 export class AudioSys {
   constructor({ musicVolume = 0.35, effectsVolume = 0.8 } = {}) {
@@ -177,7 +178,7 @@ export class AudioSys {
     this.lastImpact = now;
     const weight = 1 + Math.min(10, weapon.level || 0) * 0.015;
     const pitch = 0.94 + Math.random() * 0.12;
-    const kind = weapon.kind || 'bat';
+    const kind = WEAPONS[weapon.kind]?.baseKind || weapon.kind || 'bat';
     this._noise(0.045, 0.42 * weight, 3200 * pitch, 900, 'bandpass');
     this._tone((kind === 'axe' ? 135 : 190) * pitch, 45, 0.16, 'sine', 0.48 * weight);
     this._noise(0.14, 0.32, 650, 110, 'lowpass', 0.015);

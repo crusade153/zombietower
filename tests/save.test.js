@@ -13,7 +13,7 @@ describe('아이패드 저장 이전', () => {
   });
   it('구형 전설·탄약·층 진행을 이전한다', () => {
     const s = normalizeSave({ v: 1, coins: 80, lastSafe: 4, weapons: [{ uid: 5, kind: 'rifle', rarity: 3, level: 7, ammo: 0 }] });
-    expect(s.weapons[0]).toEqual({ uid: 5, kind: 'rifle', rarity: 4, level: 7 });
+    expect(s.weapons[0]).toEqual({ uid: 5, kind: 'rifle', rarity: 5, level: 7 });
     expect(s.resumeSafe).toBe(4);
     expect(s.equipped).toEqual([5, null, null]);
     expect(s.nextUid).toBe(6);
@@ -25,7 +25,7 @@ describe('아이패드 저장 이전', () => {
     expect(s.resumeAtBoss).toBe(true);
     expect(s.equipped).toEqual([7, null, null]);
     expect(s.nextUid).toBe(12);
-    expect(s.weapons[0].rarity).toBe(6);
+    expect(s.weapons[0].rarity).toBe(7);
     expect(s.openedChests).toEqual([1, 5]);
   });
   it('경제 개편 이전 저장의 코인은 1/8로 환산하고, 새 저장은 그대로 둔다', () => {

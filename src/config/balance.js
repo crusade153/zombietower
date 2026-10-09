@@ -69,7 +69,7 @@ export const ECON = {
   zombieRewardMult: 0.75, // 몬스터가 많아진 만큼 1마리당 코인은 낮춘다
   airCoinRewardMult: 2,
   floorReward: (floor) => 40 + floor * 20,
-  sellValue: [15, 35, 70, 120, 180, 260, 380], // 중복 무기 판매가(등급별)
+  sellValue: [8, 15, 25, 40, 75, 180, 260, 500], // 중복 무기 판매가(등급별)
 };
 
 // 손맛: 치명타·히트스톱·킬 콤보·아슬아슬 보너스
@@ -122,9 +122,8 @@ export const STARS = {
   reward: (stage) => 25 + 12 * stage,
 };
 
-// [일반, 레어, 에픽, 신화, 전설, 천상, 무적]. 최상위도 1층부터 획득 가능.
+// 쓰레기 → 신화의 상대 발견 비율. 사기급은 별도 0.2% 유지.
 export const CHEST_ODDS = {
-  first: [25, 20, 18, 12, 10, 8, 7],
-  last: [4, 6, 10, 12, 18, 22, 28],
-  bossMinRarity: 3,
+  weights: [50, 42, 32, 26, 20, 15, 9],
+  bossMinRarity: 6,
 };

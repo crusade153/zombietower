@@ -17,7 +17,7 @@ export function groundYBelow(x, y, z, plats) {
   return best;
 }
 
-const ease = (t) => 1 - (1 - t) * (1 - t);
+const ease = (t) => t * t * (3 - 2 * t);
 
 export class Player {
   constructor(scene) {
@@ -145,7 +145,7 @@ export class Player {
     if (ghost) this.setGhost(true);
   }
 
-  startSwing(dur, kind) { this.swing = { t: 0, dur, kind }; }
+  startSwing(dur, kind, windup = dur * 0.35) { this.swing = { t: 0, dur, kind, windup }; }
 
   faceDir(dx, dz, lock = 0.35) {
     this.facing = Math.atan2(dx, dz);
@@ -288,18 +288,55 @@ export class Player {
     // 오른팔: 무기 자세 / 공격 모션
     const kind = this.weaponKind ? WEAPONS[this.weaponKind].kind : null;
     const shape = this.weaponKind ? WEAPONS[this.weaponKind].shape : null;
+    const d = this.weaponKind ? WEAPONS[this.weaponKind] : null;
+    const longGun = kind === 'gun' && (d.baseKind || this.weaponKind) !== 'pistol';
     let arm = kind === 'gun' ? -1.45 : (shape === 'line' ? -0.8 : -0.55);
+    let twist = 0, lean = 0, elbow = kind === 'gun' ? -0.12 : -0.18;
+    p.armR.rotation.set(0, 0, kind === 'gun' ? -0.12 : -0.08);
+    p.armL.rotation.y = 0; p.armL.rotation.z = 0;
+    if (kind === 'gun') {
+      p.armL.rotation.set(longGun ? -1.35 : -1.15, longGun ? -0.3 : -0.12, 0.8);
+      if (p.elbowL) p.elbowL.rotation.x = longGun ? -0.15 : -0.45;
+    } else if (p.elbowL) p.elbowL.rotation.x = -0.15;
     if (this.swing) {
       this.swing.t += dt;
       const k = Math.min(1, this.swing.t / this.swing.dur);
-      if (this.swing.kind === 'gun') arm = -1.45 - 0.45 * (1 - k);
-      else if (this.swing.kind === 'line') arm = -2.2 + 1.7 * ease(k);
-      else arm = k < 0.35 ? -0.55 - 2.0 * (k / 0.35) : -2.55 + 2.3 * ease((k - 0.35) / 0.65);
+      if (this.swing.kind === 'gun') {
+        // Fast kick followed by a damped return. Shotguns transfer more recoil to the torso.
+        const recoil = Math.sin(Math.min(1, k / 0.12) * Math.PI / 2) * Math.exp(-k * 6);
+        const force = (d?.baseKind || this.weaponKind) === 'shotgun' ? 0.38 : longGun ? 0.12 : 0.23;
+        arm -= recoil * force; elbow -= recoil * force * 0.45;
+        lean = -recoil * force * 0.3;
+        this.h.model.position.z = -recoil * force * 0.16;
+      } else {
+        const hitAt = this.swing.windup / this.swing.dur;
+        const ready = Math.max(0.01, hitAt * 0.65);
+        const strikeEnd = Math.min(0.9, hitAt + 0.12);
+        if (k < ready) {
+          const t = ease(k / ready);
+          arm = -0.55 - 1.7 * t; twist = -0.5 * t; elbow = -0.18 - 0.55 * t; lean = -0.12 * t;
+        } else if (k < strikeEnd) {
+          const t = ease((k - ready) / (strikeEnd - ready));
+          arm = -2.25 + 2.55 * t; twist = -0.5 + 0.9 * t; elbow = -0.73 + 0.65 * t; lean = -0.12 + 0.3 * t;
+        } else {
+          const t = ease((k - strikeEnd) / (1 - strikeEnd));
+          arm = 0.3 - 0.85 * t; twist = 0.4 * (1 - t); elbow = -0.08 - 0.1 * t; lean = 0.18 * (1 - t);
+        }
+        p.armR.rotation.y = -twist * 0.5;
+        p.armR.rotation.z = -0.25 - Math.sin(k * Math.PI) * 0.4;
+        p.armL.rotation.set(-0.5 - Math.sin(k * Math.PI) * 0.6, 0.3, 0.2);
+        if (b.grounded) { p.legR.rotation.x -= lean * 0.8; p.legL.rotation.x += lean * 0.6; }
+      }
       if (k >= 1) this.swing = null;
     } else if (b.grounded && run > 0.2) {
       arm += Math.sin(this.animT) * 0.25 * run;
     }
     p.armR.rotation.x = arm;
+    if (p.elbowR) p.elbowR.rotation.x = elbow;
+    if (!this.swing || this.swing.kind !== 'gun') this.h.model.position.z = 0;
+    this.h.model.rotation.y = twist;
+    this.h.model.rotation.x = lean;
+    p.head.rotation.y = -twist * 0.7;
     const aura = this.weaponMesh?.userData.aura;
     if (aura) {
       aura.rotation.z = time * 1.2;

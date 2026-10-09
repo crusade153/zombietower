@@ -9,6 +9,8 @@
     "preview": "vite preview --host",
     "test": "vitest run",
     "test:visual": "node scripts/verify-visuals.mjs",
+    "test:graphics": "node scripts/verify-graphics.mjs",
+    "test:weapons": "node scripts/verify-weapons.mjs",
     "godot:data": "node scripts/export-godot.mjs",
     "ipad": "node scripts/serve-ipad.mjs"
   },

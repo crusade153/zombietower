@@ -1,5 +1,5 @@
-import { WEAPONS, RARITY, RARITY_PERKS, WEAPON_KINDS } from '../config/weapons.js';
-import { ECON, CHEST_ODDS, TOWER } from '../config/balance.js';
+import { WEAPONS, RARITY, RARITY_PERKS, DROP_WEAPON_KINDS, FUSION_KINDS, baseWeaponKind } from '../config/weapons.js';
+import { ECON, CHEST_ODDS } from '../config/balance.js';
 
 export const def = (w) => WEAPONS[w.kind];
 export const rarity = (w) => RARITY[w.rarity];
@@ -27,13 +27,13 @@ export function sellPrice(w) {
 }
 
 export function weaponAppearance(w) {
-  const level = Math.max(0, Math.min(ECON.softCapLevel, w.level || 0));
-  const tier = level >= 10 ? 4 : level >= 7 ? 3 : level >= 4 ? 2 : level >= 1 ? 1 : 0;
+  const level = Math.max(0, Math.min(15, w.level || 0));
+  const tier = level > 10 ? 3 : level >= 6 ? 2 : level >= 1 ? 1 : 0;
   return {
     tier, level,
-    name: ['기본형', '강철 보강', '룬 각인', '플라즈마', '황금 각성'][tier],
-    color: [RARITY[w.rarity].color, '#c8e5ff', '#64f5de', '#c49aff', '#ffda63'][tier],
-    next: [1, 4, 7, 10, null][tier],
+    name: ['기본형', '강철 보강', '룬 에너지', '황금 각성'][tier],
+    color: [WEAPONS[w.kind].color || RARITY[w.rarity].color, '#c8e5ff', '#64f5de', '#ffda63'][tier],
+    next: [1, 6, 11, null][tier],
   };
 }
 
@@ -44,10 +44,14 @@ export function weaponDps(w) {
   return dmg / d.interval;
 }
 
-/** 상자 등급 확률 (층 1 → 10 보간) */
-export function chestOdds(stage) {
-  const t = Math.max(0, Math.min(1, (stage - 1) / (TOWER.stages - 1)));
-  return CHEST_ODDS.first.map((a, i) => a + (CHEST_ODDS.last[i] - a) * t);
+/** 사기급은 0.2%, 다른 등급은 요청한 수치 비율대로 99.8%를 배분. */
+export function chestOdds(_stage, isBoss = false) {
+  const sum = CHEST_ODDS.weights.reduce((a, b) => a + b, 0);
+  const odds = [...CHEST_ODDS.weights.map(a => a / sum * 99.8), 0.2];
+  if (isBoss) for (let i = 0; i < CHEST_ODDS.bossMinRarity; i++) {
+    odds[CHEST_ODDS.bossMinRarity] += odds[i]; odds[i] = 0;
+  }
+  return odds;
 }
 
 export function rollRarity(stage, rng = Math.random, minRarity = 0) {
@@ -64,7 +68,24 @@ export function rollRarity(stage, rng = Math.random, minRarity = 0) {
 }
 
 export function rollWeapon(stage, rng = Math.random, isBoss = false) {
-  const kind = WEAPON_KINDS[Math.floor(rng() * WEAPON_KINDS.length)];
+  const kind = DROP_WEAPON_KINDS[Math.floor(rng() * DROP_WEAPON_KINDS.length)];
   const rar = rollRarity(stage, rng, isBoss ? CHEST_ODDS.bossMinRarity : 0);
   return { kind, rarity: rar, level: 0 };
+}
+
+/** 첫 재료가 설계도. 최고 등급 +1, 최고 강화 유지. 합성 실패 없음. */
+export function fusionPreview(weapons) {
+  if (weapons.length !== 3 || new Set(weapons.map(w => w.uid)).size !== 3) return null;
+  const base = baseWeaponKind(weapons[0]);
+  return {
+    kind: FUSION_KINDS.find(k => WEAPONS[k].baseKind === base),
+    rarity: Math.min(RARITY.length - 1, Math.max(...weapons.map(w => w.rarity)) + 1),
+    level: Math.max(...weapons.map(w => w.level)),
+  };
+}
+
+export function weaponEffect(w) {
+  const look = weaponAppearance(w);
+  return { color: Number.parseInt((look.tier >= 2 ? look.color : WEAPONS[w.kind].color || RARITY[w.rarity].color).slice(1), 16),
+    strength: look.tier + (WEAPONS[w.kind].fusion ? 2 : 0) + (w.rarity >= 5 ? 1 : 0) };
 }

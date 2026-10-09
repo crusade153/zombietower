@@ -4,11 +4,13 @@ import { LAVA } from '../config/balance.js';
 const VERT = /* glsl */ `
 uniform float uTime;
 varying vec3 vWorld;
+#include <fog_pars_vertex>
 void main() {
   vec4 w = modelMatrix * vec4(position, 1.0);
-  w.y += sin(w.x * 0.35 + uTime * 1.2) * cos(w.z * 0.3 + uTime) * 0.08;
   vWorld = w.xyz;
-  gl_Position = projectionMatrix * viewMatrix * w;
+  vec4 mvPosition = viewMatrix * w;
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
 }`;
 
 const FRAG = /* glsl */ `
@@ -17,6 +19,7 @@ uniform float uTime;
 uniform float uFrozen;
 uniform float uClassic;
 varying vec3 vWorld;
+#include <fog_pars_fragment>
 float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float noise(vec2 p) {
   vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -29,31 +32,41 @@ float fbm(vec2 p) {
   return v;
 }
 void main() {
+  vec3 col;
   if (uClassic > 0.5) {
     float tile = hash(floor(vWorld.xz * 0.4));
     vec3 block = mix(vec3(1.0, 0.24, 0.035), vec3(1.0, 0.55, 0.12), step(0.55, tile));
-    gl_FragColor = vec4(mix(block, vec3(0.45, 0.85, 1.0), uFrozen), 1.0);
-    return;
-  }
-  vec2 p = vWorld.xz * 0.07;
+    col = mix(block, vec3(0.45, 0.85, 1.0), uFrozen);
+  } else {
+  vec2 p = vWorld.xz * 0.14;
   float t = uTime * 0.12;
   float n1 = fbm(p + vec2(t, t * 0.6));
   float n2 = fbm(p * 1.9 + vec2(-t * 0.8, t) + n1 * 1.5);
-  float veins = smoothstep(0.4, 0.56, n2);
-  vec3 deep = vec3(0.28, 0.035, 0.045);
-  vec3 hot = vec3(1.0, 0.62, 0.12);
-  vec3 col = mix(deep, hot, veins);
+  float veins = smoothstep(0.42, 0.53, n2);
+  vec3 deep = vec3(0.035, 0.004, 0.009);
+  vec3 hot = vec3(2.0, 0.3, 0.015);
+  col = mix(deep, hot, veins);
   float crust = smoothstep(0.55, 0.8, noise(p * 6.0 + t));
   col = mix(col, vec3(0.08, 0.055, 0.075), crust * 0.65);
-  float cracks = 1.0 - smoothstep(0.025, 0.09, abs(n2 - 0.5));
+  float cracks = 1.0 - smoothstep(0.008, 0.035, abs(n2 - 0.5));
   col += vec3(1.0, 0.42, 0.035) * cracks * 0.65;
   col += vec3(0.25, 0.08, 0.0) * (0.5 + 0.5 * sin(uTime * 2.0 + n2 * 8.0)) * 0.25;
-  vec3 obs = mix(vec3(0.2, 0.65, 0.8), vec3(0.69, 0.93, 1.0), noise(vWorld.xz * 0.6));
+  // Fine moving currents and white-hot seams add detail without tessellation.
+  float ripple = sin(vWorld.x * 1.2 + vWorld.z * 0.8 + uTime * 1.6 + n1 * 9.0);
+  col += vec3(1.0, 0.18, 0.025) * pow(max(0.0, ripple), 12.0) * cracks * 0.35;
+  col *= 1.6;
+  float ice = noise(vWorld.xz * 0.6);
+  float iceCrack = 1.0 - smoothstep(0.015, 0.045, abs(ice - 0.5));
+  vec3 obs = mix(vec3(0.12, 0.4, 0.57), vec3(0.47, 0.78, 0.88), ice);
+  obs += vec3(0.4, 0.65, 0.8) * iceCrack;
+  vec3 viewDir = normalize(cameraPosition - vWorld);
+  obs += vec3(0.18, 0.3, 0.38) * pow(1.0 - abs(viewDir.y), 3.0);
   col = mix(col, obs, uFrozen);
-  float dist = length(vWorld - cameraPosition);
-  float f = smoothstep(90.0, 320.0, dist);
-  col = mix(col, vec3(0.65, 0.63, 0.62), f);
+  }
   gl_FragColor = vec4(col, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+  #include <fog_fragment>
 }`;
 
 export class Lava {
@@ -70,10 +83,11 @@ export class Lava {
       type: 'lavafloor', solid: false, moved: false, dx: 0, dy: 0, dz: 0, x: 0, z: 0,
       minX: -700, maxX: 700, minZ: -700, maxZ: 700, minY: -5, maxY: 0,
     };
-    this.uniforms = { uTime: { value: 0 }, uFrozen: { value: 0 }, uClassic: { value: 0 } };
-    const geo = new THREE.PlaneGeometry(1400, 1400, 96, 96);
+    this.uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uFrozen: { value: 0 }, uClassic: { value: 0 } }]);
+    // Surface motion is shaded per pixel; a flat plane matches the collision floor.
+    const geo = new THREE.PlaneGeometry(1400, 1400);
     geo.rotateX(-Math.PI / 2);
-    this.mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: this.uniforms }));
+    this.mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: this.uniforms, fog: true }));
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
     this.mesh.position.y = this.y;

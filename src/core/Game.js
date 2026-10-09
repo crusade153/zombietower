@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { PHYS, LAVA, TOWER, PLAYER, ECON, THRILL, STARS, CHARGE, ABILITIES, ITEMS } from '../config/balance.js';
-import { WEAPONS, RARITY } from '../config/weapons.js';
+import { WEAPONS, RARITY, baseWeaponKind } from '../config/weapons.js';
 import { ZOMBIES, zombieWeights } from '../config/zombies.js';
 import { generateTower, bossStage } from '../world/TowerGenerator.js';
 import { WorldView } from '../world/WorldView.js';
@@ -15,13 +15,14 @@ import { Player, groundYBelow } from '../entities/Player.js';
 import { Zombie } from '../entities/Zombie.js';
 import { moveAndCollide, rayBox } from './physics.js';
 import { CameraRig } from './CameraRig.js';
+import { SceneRenderer } from './SceneRenderer.js';
 import { Input } from './Input.js';
 import { AudioSys } from './Audio.js';
 import {
-  loadSave, writeSave, newSave, addWeapon, weaponByUid,
+  loadSave, writeSave, newSave, addWeapon, weaponByUid, fuseWeapons,
 } from './Save.js';
 import {
-  def as wdef, weaponDamage, hasPerk, upgradeCost, canUpgrade, sellValue, sellPrice, rollWeapon,
+  def as wdef, weaponDamage, hasPerk, upgradeCost, canUpgrade, sellValue, sellPrice, rollWeapon, weaponEffect,
 } from '../combat/Weapons.js';
 import { Combo, LavaEscape, rollCrit } from '../combat/Thrills.js';
 import { StageRun } from './StageRun.js';
@@ -58,6 +59,7 @@ export class Game {
     this.renderer.toneMappingExposure = 1.12;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.sceneRenderer = new SceneRenderer(this.renderer, { touchDevice: this.touchDevice });
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.lobby = new Lobby();
     this._frameEma = 1 / 60;
@@ -67,7 +69,7 @@ export class Game {
     const room = new RoomEnvironment();
     this.environment = pmrem.fromScene(room, 0.04);
     this.scene.environment = this.lobby.scene.environment = this.environment.texture;
-    this.scene.environmentIntensity = 0.55;
+    this.scene.environmentIntensity = 0.28;
     this.lobby.scene.environmentIntensity = 0.65;
     room.dispose();
     pmrem.dispose();
@@ -76,7 +78,7 @@ export class Game {
     this.input = new Input();
     this.input.setFloating(this.save.stickMode !== 'fixed');
     this.audio = new AudioSys(this.save);
-    this.fx = new Effects(this.scene);
+    this.fx = new Effects(this.scene, { capacity: this.touchDevice ? 256 : 512 });
     this.hud = new Hud(this);
     this.screens = new Screens(this);
     this.audio.muted = !!this.save.muted;
@@ -115,6 +117,9 @@ export class Game {
     this.resize();
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('visibilitychange', () => {
+      this.lastNow = 0;
+      this._frameEma = 1 / 60;
+      this._adaptT = this._recoverT = 0;
       this.audio.setBackground(document.hidden);
       if (document.hidden && this.state === 'play') this.pause();
     });
@@ -138,9 +143,9 @@ export class Game {
   // ------------------------------------------------------------------
   buildWorld() {
     // 이전 월드 정리
-    this.fx.ringGeo.dispose();
+    this.fx.dispose();
     disposeWorld(this.scene);
-    this.fx = new Effects(this.scene);
+    this.fx = new Effects(this.scene, { capacity: this.touchDevice ? 256 : 512 });
     this.zombies = [];
     this.pickups = [];
     this.acids = [];
@@ -229,6 +234,7 @@ export class Game {
     this.water.charges = Math.max(this.water.charges, LAVA.waterCharges);
     this.bandStage = sz.stage;
     this.world.setActiveStage(sz.stage);
+    this.renderer.shadowMap.needsUpdate = true;
     this.hud.setStage(sz.safe.bossPrep ? '최종 보스 준비' : k === 0 ? '출발' : `안전구역 ${k}`);
   }
 
@@ -250,6 +256,7 @@ export class Game {
     const w = window.innerWidth;
     const h = window.innerHeight;
     this.renderer.setSize(w, h, false);
+    this.sceneRenderer.setSize();
     this.camera.aspect = w / h;
     this.camera.fov = w / h < 1.2 ? 72 : 62;
     this.camera.updateProjectionMatrix();
@@ -363,7 +370,8 @@ export class Game {
   applyGraphicsLighting() {
     const classic = this.save.graphicsStyle === 'classic';
     this.renderer.shadowMap.enabled = !classic;
-    this.renderer.toneMappingExposure = classic ? 0.9 : 1.12;
+    this.renderer.shadowMap.needsUpdate = true;
+    this.renderer.toneMappingExposure = classic ? 0.9 : 1.0;
     this.scene.environment = this.lobby.scene.environment = classic ? null : this.environment.texture;
   }
 
@@ -474,10 +482,14 @@ export class Game {
     }
     if (this.state === 'title') {
       this.lobby.update(now, this.reducedMotion);
-      this.renderer.render(this.lobby.scene, this.lobby.camera);
-    } else this.renderer.render(this.scene, this.camera);
+      this.renderScene(this.lobby.scene, this.lobby.camera);
+    } else this.renderScene(this.scene, this.camera);
     this.adaptResolution(dt);
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  renderScene(scene, camera) {
+    this.sceneRenderer.render(scene, camera, this.save.graphicsStyle !== 'classic' && this.ratio > 0.75);
   }
 
   /** 프레임이 느리면 해상도를 낮추고, 여유 있으면 다시 올린다 (오래된 아이패드 대비) */
@@ -488,12 +500,15 @@ export class Game {
     if (this._adaptT < 1.5) return;
     this._adaptT = 0;
     let r = this.ratio;
+    // Recover on 60 Hz screens too, after three stable windows to avoid flicker.
+    this._recoverT = this._frameEma < 0.018 ? (this._recoverT || 0) + 1.5 : 0;
     if (this._frameEma > 0.024 && r > 0.75) r = Math.max(0.75, r - 0.25);
-    else if (this._frameEma < 0.0125 && r < this.maxRatio) r = Math.min(this.maxRatio, r + 0.25);
+    else if (this._recoverT >= 4.5 && r < this.maxRatio) { r = Math.min(this.maxRatio, r + 0.25); this._recoverT = 0; }
     if (r !== this.ratio) {
       this.ratio = r;
       this.renderer.setPixelRatio(r);
       this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+      this.sceneRenderer?.setSize();
     }
   }
 
@@ -898,9 +913,9 @@ export class Game {
       if (t) P.faceDir(t.body.x - b.x, t.body.z - b.z, 0.4);
       else P.faceLock = 0.3;
       this.cd = d.interval;
-      P.startSwing(Math.max(0.3, d.windup / 0.35), d.shape === 'line' ? 'line' : 'melee');
+      P.startSwing(Math.min(d.interval, d.windup + 0.3), d.shape === 'line' ? 'line' : 'melee', d.windup);
       this.pending = { t: d.windup, w, yaw: P.facing };
-      this.audio.play(d.shape === 'line' ? 'whip' : `swing-${w.kind}`);
+      this.audio.play(d.shape === 'line' ? 'whip' : `swing-${baseWeaponKind(w)}`);
     } else {
       const t = this.findTarget(Math.min(d.range, 24), 45, 7);
       if (t) P.faceDir(t.body.x - b.x, t.body.z - b.z, 0.3);
@@ -918,6 +933,7 @@ export class Game {
     const d = wdef(w);
     if (!P.alive) return;
     const dmg = weaponDamage(w);
+    const effect = weaponEffect(w);
     const fx = Math.sin(pend.yaw);
     const fz = Math.cos(pend.yaw);
     const half = (((d.arc || 0) / 2) * Math.PI) / 180;
@@ -949,9 +965,14 @@ export class Game {
     if (d.shape === 'line') {
       const ex = b.x + fx * d.range;
       const ez = b.z + fz * d.range;
-      this.fx.line(b.x + fx * 0.5, b.y + 1.1, b.z + fz * 0.5, ex, b.y + 0.9, ez, 0xffe9a0, 0.09, 0.12);
+      this.fx.line(b.x + fx * 0.5, b.y + 1.1, b.z + fz * 0.5, ex, b.y + 0.9, ez, effect.color, 0.09 + effect.strength * 0.025, 0.18);
     } else {
-      this.fx.slash(b.x, b.y, b.z, pend.yaw, d.range, d.arc, 0xfff2b0);
+      this.fx.slash(b.x, b.y, b.z, pend.yaw, d.range, d.arc, effect.color);
+      if (effect.strength >= 2) this.fx.slash(b.x, b.y + 0.25, b.z, pend.yaw - 0.1, d.range * 0.9, d.arc, effect.color);
+    }
+    if (effect.strength >= 2) {
+      this.fx.burst(b.x + fx * 1.7, b.y + 1, b.z + fz * 1.7, effect.color, 6 + effect.strength * 2, 4, 0.3, 0.09);
+      if (effect.strength >= 3) this.fx.ring(b.x + fx * 1.7, b.y, b.z + fz * 1.7, 1 + effect.strength * 0.25, effect.color, 0.3, true);
     }
     if (n > 0) {
       this.cam.shake = Math.max(this.cam.shake, 0.15);
@@ -964,9 +985,14 @@ export class Game {
     const b = P.body;
     const fx = Math.sin(P.facing);
     const fz = Math.cos(P.facing);
-    const ox = b.x + fx * 0.5;
-    const oy = b.y + 1.25;
-    const oz = b.z + fz * 0.5;
+    // Muzzle and traces originate at the rendered barrel, including fused models.
+    P.syncVisual(0, this.near(b.y), this.time);
+    P.root.updateMatrixWorld(true);
+    const muzzle = P.weaponMesh?.userData.muzzle?.clone();
+    if (muzzle) P.weaponMesh.localToWorld(muzzle);
+    const ox = muzzle?.x ?? b.x + fx * 0.5;
+    const oy = muzzle?.y ?? b.y + 1.25;
+    const oz = muzzle?.z ?? b.z + fz * 0.5;
     let dirx = fx; let diry = 0; let dirz = fz;
     if (target) {
       const tb = target.body;
@@ -978,8 +1004,11 @@ export class Game {
     }
     const dmg = weaponDamage(w);
     const burn = hasPerk(w, 'burn') ? dmg * 0.25 : 0;
-    this.audio.play(w.kind);
-    this.fx.burst(ox, oy, oz, 0xffd070, 3, 3, 0.15, 0.1);
+    const effect = weaponEffect(w);
+    this.audio.play(baseWeaponKind(w));
+    this.fx.burst(ox, oy, oz, effect.color, 4 + effect.strength * 2, 3, 0.16, 0.1 + effect.strength * 0.012);
+    this.fx.line(ox, oy, oz, ox + dirx * 0.6, oy + diry * 0.6, oz + dirz * 0.6, 0xffffff, 0.12 + effect.strength * 0.02, 0.055);
+    this.cam.shake = Math.max(this.cam.shake, baseWeaponKind(w) === 'shotgun' ? 0.18 : 0.035);
     const plats = this.near(b.y);
     for (let i = 0; i < d.pellets; i++) {
       let dx = dirx; let dy = diry; let dz = dirz;
@@ -1009,9 +1038,10 @@ export class Game {
         const t = rayBox(ox, oy, oz, dx, dy, dz, box, tMax);
         if (t !== null && t < tMax) { tMax = t; hitZ = z; }
       }
-      this.fx.line(ox, oy, oz, ox + dx * tMax, oy + dy * tMax, oz + dz * tMax, w.rarity >= 2 ? 0xd9a8ff : 0xffe38a, 0.045, 0.07);
+      this.fx.line(ox, oy, oz, ox + dx * tMax, oy + dy * tMax, oz + dz * tMax, effect.color, 0.045 + effect.strength * 0.018, 0.09 + effect.strength * 0.015);
       if (hitZ) {
         this.hitZombie(hitZ, dmg, { kx: dx, kz: dz, knock: d.knockback, burn, weapon: w });
+        if (effect.strength >= 2) this.fx.burst(ox + dx * tMax, oy + dy * tMax, oz + dz * tMax, effect.color, 3, 3, 0.25, 0.09);
       }
     }
   }
@@ -1414,7 +1444,7 @@ export class Game {
     const pb = P.body;
     for (let i = this.pickups.length - 1; i >= 0; i--) {
       const it = this.pickups[i];
-      if (it.taken) { this.scene.remove(it.mesh); this.pickups.splice(i, 1); continue; }
+      if (it.taken) { this.scene.remove(it.mesh); disposeWorld(it.mesh); this.pickups.splice(i, 1); continue; }
       if (it.fixed && Math.abs(it.stage - this.bandStage) > 1) { it.mesh.visible = false; continue; }
       it.mesh.visible = true;
       if (it.type === 'coin') {
@@ -1714,11 +1744,28 @@ export class Game {
     w.level++;
     if (w === this.currentWeapon) this.player.setWeapon(w);
     const b = this.player.body;
-    this.fx.ring(b.x, b.y + 0.1, b.z, 1.5, w.level >= ECON.softCapLevel ? 0xffda63 : 0x64f5de, 0.6, true);
-    this.fx.burst(b.x, b.y + 1.3, b.z, 0xffda63, 12, 3.5, 0.6, 0.1);
+    const effect = weaponEffect(w);
+    this.fx.ring(b.x, b.y + 0.1, b.z, 1.5, effect.color, 0.6, true);
+    this.fx.burst(b.x, b.y + 1.3, b.z, effect.color, 12, 3.5, 0.6, 0.1);
     this.markDirty(true);
     this.hud.setCoins(this.save.coins);
     return true;
+  }
+
+  fuseWeapon(uids) {
+    const w = fuseWeapons(this.save, uids);
+    if (!w) return null;
+    this.pending = null;
+    this.resetCharge(true);
+    this.refreshSlots();
+    this.markDirty(true);
+    this.audio.play('special');
+    const b = this.player.body;
+    const effect = weaponEffect(w);
+    this.fx.ring(b.x, b.y, b.z, 3, effect.color, 0.7, true);
+    this.fx.burst(b.x, b.y + 1.1, b.z, effect.color, 32, 5, 0.7, 0.13);
+    this.hud.toast(`합성 성공! ${WEAPONS[w.kind].name}`, 2500);
+    return w;
   }
 
   equipWeapon(uid, slot) {
@@ -1761,22 +1808,14 @@ export class Game {
   updateView(dt, now) {
     const P = this.player;
     const b = P.body;
-    this.world.sync(this.state === 'title' ? now : this.time, b, this.lava.y);
-    this.fx.update(dt);
-
     if (this.state === 'title') {
-      // 타이틀 배경: 시작 안전구역 주변을 천천히 선회
-      const sz = this.tower.safeZones[this.save.resumeSafe || 0];
-      this.cam.yaw += dt * 0.12;
-      this.cam.pitch = 0.3;
-      this.cam.target.set(sz.x, sz.maxY + 2, sz.z);
-      this.cam._apply(dt, now);
-      this.lava.update(dt, sz.maxY);
-      P.syncVisual(dt, this.near(b.y), this.time);
-      this.zombies.forEach((z) => z.syncVisual(dt, this));
+      // Only the lobby is rendered; leave the hidden tower and enemies asleep.
       this.hud.setVignette(0);
       return;
     }
+
+    this.world.sync(this.time, b, this.lava.y);
+    this.fx.update(dt);
 
     const hint = P.lastGround && P.lastGround.next;
     const mv = this.input.getMove();

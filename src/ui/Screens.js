@@ -1,7 +1,7 @@
 import { WEAPONS, RARITY, PERK_TEXT } from '../config/weapons.js';
 import { ECON, ABILITIES, ABILITY_IDS, ITEMS, ITEM_IDS } from '../config/balance.js';
 import {
-  weaponDamage, weaponName, upgradeCost, canUpgrade, sellPrice, weaponDps, perks, chestOdds, weaponAppearance,
+  weaponDamage, weaponName, upgradeCost, canUpgrade, sellPrice, weaponDps, perks, chestOdds, weaponAppearance, fusionPreview,
 } from '../combat/Weapons.js';
 import { weaponByUid, normalizeSave, writeSave } from '../core/Save.js';
 import { formatTime, starCount } from '../core/StageRun.js';
@@ -10,6 +10,7 @@ import { ACHIEVEMENTS } from '../config/achievements.js';
 import { COSMETICS, COSMETIC_KINDS } from '../config/cosmetics.js';
 import { achievementProgress, recordView, ownedTitles } from '../core/Achievements.js';
 import { icon } from './icons.js';
+import { WeaponPreview } from './WeaponPreview.js';
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = (n) => Math.round(n).toLocaleString();
@@ -21,6 +22,8 @@ export class Screens {
     this.sel = null;
     this.mode = null;
     this.chestStage = 0;
+    this.preview = new WeaponPreview();
+    this.fusionIds = [];
     this.el.addEventListener('click', (e) => {
       const t = e.target.closest('[data-act]');
       if (!t || t.hasAttribute('disabled')) return;
@@ -40,6 +43,7 @@ export class Screens {
   get open() { return !this.el.classList.contains('hidden'); }
 
   _show(html) {
+    this.preview.stop();
     this.el.classList.remove('title-screen');
     this.el.innerHTML = html;
     this.el.classList.remove('hidden');
@@ -47,6 +51,7 @@ export class Screens {
   }
 
   hide() {
+    this.preview.stop();
     this.el.classList.remove('title-screen');
     this.el.classList.add('hidden');
     this.el.innerHTML = '';
@@ -95,6 +100,19 @@ export class Screens {
       // 대장간
       case 'sel': this.sel = Number(data.uid); this.renderForge(); break;
       case 'upgrade': this.doUpgrade(); break;
+      case 'fusion': this.fusionIds = []; this.mode = 'fusion'; this.renderFusion(); break;
+      case 'fusion-select': {
+        const uid = Number(data.uid);
+        if (this.fusionIds.includes(uid)) this.fusionIds = this.fusionIds.filter(id => id !== uid);
+        else if (this.fusionIds.length < 3) this.fusionIds.push(uid);
+        this.renderFusion(); break;
+      }
+      case 'fusion-create': {
+        const w = g.fuseWeapon(this.fusionIds);
+        if (w) { this.fusionIds = []; this.showForge(w.uid); this.el.querySelector('.detail').classList.add('fusion-reveal'); }
+        break;
+      }
+      case 'fusion-back': this.showForge(this.sel); break;
       case 'equip': g.equipWeapon(this.sel, Number(data.slot)); this.renderForge(); break;
       case 'unequip': g.unequipWeapon(this.sel); this.renderForge(); break;
       case 'ability': g.buyAbility(data.id); this.renderShop(); break;
@@ -200,16 +218,13 @@ export class Screens {
   showChest(stage) {
     this.chestStage = stage;
     this.mode = 'chest';
-    const odds = chestOdds(stage);
-    if (bossStage(stage)) {
-      for (let i = 0; i < 3; i++) { odds[3] += odds[i]; odds[i] = 0; }
-    }
+    const odds = chestOdds(stage, bossStage(stage));
     const tot = odds.reduce((a, b) => a + b, 0);
     this._show(`
       <div class="panel" style="min-width:min(80vw,640px)">
         <h2>📦 ${stage}층 보물상자</h2>
         <div class="chest-stage"><div class="beam" id="chest-beam"></div><div class="chest-ico" id="chest-ico">🎁</div></div>
-        <p class="hint">${RARITY.map((r, i) => `<span style="color:${r.color}">${r.name} ${Math.round((odds[i] / tot) * 100)}%</span>`).join(' · ')}${bossStage(stage) ? ' · 보스층: 신화 이상 확정' : ''}</p>
+        <p class="hint">${RARITY.map((r, i) => `<span style="color:${r.color}">${r.name} ${Number(((odds[i] / tot) * 100).toFixed(2))}%</span>`).join(' · ')}${bossStage(stage) ? ' · 보스층: 신화 이상 확정' : ''}</p>
         <div id="chest-result"></div>
         <div class="row"><button class="btn green" data-act="chest-open" id="chest-btn">열기!</button></div>
       </div>`);
@@ -280,16 +295,18 @@ export class Screens {
     const appearance = weaponAppearance(sel);
     const equipBtns = [0, 1, 2].map((i) => `<button class="btn sub" style="font-size:calc(var(--u)*1.9)" data-act="equip" data-slot="${i}" ${slotNow === i ? 'disabled' : ''}>슬롯 ${i + 1}</button>`).join('');
     this._show(`
-      <div class="panel" style="width:min(96vw,980px)">
+      <div class="panel forge-panel" style="width:min(96vw,980px)">
         <h2>⚒ 대장간 <span style="color:#ffd04a;margin-left:1em"><i class="coin"></i> ${fmt(s.coins)}</span></h2>
-        <div class="row" style="align-items:flex-start;flex-wrap:nowrap">
+        <div class="row forge-layout" style="align-items:flex-start;flex-wrap:nowrap">
           <div style="flex:1.6;min-width:0"><div class="cards">${cards}</div></div>
           <div class="detail" style="flex:1">
             <div style="font-size:calc(var(--u)*2.6);font-weight:900;color:${r.color}">${d.icon} ${esc(weaponName(sel))}${sel.level ? ` +${sel.level}` : ''}</div>
+            <div class="weapon-preview" id="weapon-preview"></div>
+            ${d.fusion ? '<span class="fusion-tag">합성 전용 무기</span>' : ''}
             공격력 <b>${fmt(weaponDamage(sel))}</b>${d.pellets > 1 ? ` ×${d.pellets}발` : ''}${nextDmg ? ` → <b style="color:#7dff9a">${fmt(nextDmg)}</b>` : ' <b>(최대)</b>'}<br>
             초당 피해 ≈ <b>${fmt(weaponDps(sel))}</b><br>
             <div class="appearance-badge" style="--upgrade-color:${appearance.color}">✦ ${appearance.name} · +${sel.level}</div>
-            <p class="hint appearance-hint">${appearance.next ? `+${appearance.next}에서 다음 외형 해금` : '최종 외형 · 황금 오라'}<br>+1 강철 · +4 룬 · +7 플라즈마 · +10 황금</p>
+            <p class="hint appearance-hint">${appearance.next ? `+${appearance.next}에서 다음 외형 해금` : '최종 외형 · 황금 오라'}<br>+1~5 강철 · +6~10 룬 · +11 이상 황금</p>
             ${esc(d.desc)}<br>
             ⚡ <b>${esc(d.special.name)}</b> · ${esc(d.special.desc)}<br>
             ${perks(sel).length ? `<span style="color:${r.color}">✨ ${perks(sel).map((p) => PERK_TEXT[p]).join(' · ')}</span><br>` : ''}
@@ -300,9 +317,37 @@ export class Screens {
             <div class="row" style="justify-content:flex-start"><button class="btn sub" style="font-size:calc(var(--u)*1.9)" data-act="sell" ${s.weapons.length <= 1 ? 'disabled' : ''}>판매 <i class="coin"></i>${fmt(sellPrice(sel))}</button></div>
           </div>
         </div>
-        <button class="btn" data-act="close">닫기</button>
+        <div class="row"><button class="btn fusion-btn" data-act="fusion" ${s.weapons.length < 3 ? 'disabled' : ''}>✦ 무기 3개 합성</button><button class="btn" data-act="close">닫기</button></div>
         <p class="hint">보관함 ${s.weapons.length} / 12 · 강화 제한 없음 (+${ECON.softCapLevel} 이후 비용은 완만하게 증가) · 아이템·이동 능력은 🛒 상점</p>
       </div>`);
+    this.preview.show(this.el.querySelector('#weapon-preview'), sel);
+  }
+
+  renderFusion() {
+    const s = this.g.save;
+    this.fusionIds = this.fusionIds.filter(id => weaponByUid(s, id));
+    const materials = this.fusionIds.map(id => weaponByUid(s, id));
+    const result = fusionPreview(materials);
+    const cards = s.weapons.map(w => {
+      const index = this.fusionIds.indexOf(w.uid);
+      return `<button class="card fusion-card${index >= 0 ? ' sel' : ''}" style="--rc:${RARITY[w.rarity].color}" data-act="fusion-select" data-uid="${w.uid}" aria-pressed="${index >= 0}" ${index < 0 && materials.length === 3 ? 'disabled' : ''}>
+        ${index >= 0 ? `<span class="eq">${index === 0 ? '① 설계도' : `${index + 1}번 재료`}</span>` : ''}
+        <div class="ico">${WEAPONS[w.kind].icon}</div><div class="nm">${esc(WEAPONS[w.kind].name)} +${w.level}</div><div class="st">${RARITY[w.rarity].name} · ${fmt(weaponDamage(w))}</div></button>`;
+    }).join('');
+    this._show(`<div class="panel forge-panel fusion-panel">
+      <h2>✦ 무기 합성 <span class="fusion-tag">${materials.length} / 3 선택</span></h2>
+      <p class="hint">첫 번째 무기가 결과 무기의 종류를 결정합니다. 종류·등급이 달라도 합성 가능.</p>
+      <div class="forge-layout row"><div class="cards" style="flex:1.5;min-width:0">${cards}</div>
+      <div class="detail" style="flex:1">
+        <div class="fusion-slots">${[0, 1, 2].map(i => `<span>${materials[i] ? `${WEAPONS[materials[i].kind].icon}<small>${i === 0 ? '설계도' : '재료'}</small>` : `${i + 1}<small>선택 대기</small>`}</span>`).join('<b>+</b>')}</div>
+        ${result ? `<h3 style="color:${RARITY[result.rarity].color}">${esc(weaponName(result))} +${result.level}</h3>
+        <div class="weapon-preview" id="weapon-preview"></div><p>공격력 <b>${fmt(weaponDamage(result))}</b> · 초당 피해 <b>${fmt(weaponDps(result))}</b><br>${esc(WEAPONS[result.kind].desc)}</p>` : '<div class="fusion-empty">✦<p>무기 3개를 선택하면<br>새로운 외형과 능력치를 미리 볼 수 있습니다.</p></div>'}
+        <p class="hint">최고 등급보다 한 단계 상승 (사기급이 최대)<br>재료의 최고 강화 수치 유지 · 성공률 100% · 코인 비용 없음</p>
+        <p class="fusion-consume">선택한 무기 3개는 소모됩니다.</p>
+        <button class="btn fusion-btn" data-act="fusion-create" ${result ? '' : 'disabled'}>3개 소모하고 합성</button>
+      </div></div><div class="row"><button class="btn sub" data-act="fusion-back">대장간으로</button><button class="btn sub" data-act="close">닫기</button></div>
+    </div>`);
+    if (result) this.preview.show(this.el.querySelector('#weapon-preview'), result);
   }
 
   // ---------- 상점 ----------

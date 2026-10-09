@@ -11,7 +11,7 @@ const output = path.resolve('artifacts/visual-checks');
 await fs.mkdir(output, { recursive: true });
 const browser = process.env.GAME_CDP
   ? await chromium.connectOverCDP(process.env.GAME_CDP)
-  : await chromium.launch({ headless: true });
+  : await chromium.launch({ headless: true, channel: process.env.GAME_BROWSER || undefined });
 const errors = [];
 const reports = [];
 const contexts = [];
@@ -32,7 +32,7 @@ async function capture(page, name) {
   const stats = await page.evaluate(() => {
     const g = window.__game;
     const title = g.state === 'title';
-    g.renderer.render(title ? g.lobby.scene : g.scene, title ? g.lobby.camera : g.camera);
+    g.renderScene(title ? g.lobby.scene : g.scene, title ? g.lobby.camera : g.camera);
     const gl = g.renderer.getContext();
     const data = new Uint8Array(gl.drawingBufferWidth * gl.drawingBufferHeight * 4);
     gl.readPixels(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight, gl.RGBA, gl.UNSIGNED_BYTE, data);
@@ -55,7 +55,16 @@ async function layout(page, selectors) {
     for (const el of els) {
       const r = el.getBoundingClientRect();
       if (r.x < -1 || r.y < -1 || r.right > innerWidth + 1 || r.bottom > innerHeight + 1) issues.push(`outside: ${el.id || el.className}`);
-      if (el.scrollWidth > el.clientWidth + 2) issues.push(`overflow: ${el.id || el.className}`);
+      // The attack gauge intentionally extends beyond the button as a masked
+      // pseudo-element. Check its actual icon/text bounds, not that decoration.
+      let contentOverflow = el.scrollWidth > el.clientWidth + 2;
+      if (contentOverflow && el.matches('.act-btn.attack')) {
+        const content = document.createRange();
+        content.selectNodeContents(el);
+        const c = content.getBoundingClientRect();
+        contentOverflow = c.left < r.left - 1 || c.right > r.right + 1;
+      }
+      if (contentOverflow) issues.push(`overflow: ${el.id || el.className}`);
     }
     for (let i = 0; i < els.length; i++) for (let j = i + 1; j < els.length; j++) {
       if (els[i].contains(els[j]) || els[j].contains(els[i])) continue;

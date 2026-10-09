@@ -27,7 +27,7 @@ describe('무기·강화', () => {
         expect(d).toBeGreaterThan(prev);
         prev = d;
       }
-      expect(weaponDamage(W(k, 0, 10))).toBeCloseTo(WEAPONS[k].dmg * (1 + ECON.upgradeDmgPerLevel * 10), 6);
+      expect(weaponDamage(W(k, 1, 10))).toBeCloseTo(WEAPONS[k].dmg * (1 + ECON.upgradeDmgPerLevel * 10), 6);
     }
   });
 
@@ -48,12 +48,13 @@ describe('무기·강화', () => {
 });
 
 describe('보물상자 확률', () => {
-  it('각 층의 확률 합이 100이고 층이 오를수록 높은 등급 비중이 커진다', () => {
+  it('각 층의 확률 합이 100이고 요청한 고정 발견 확률을 유지한다', () => {
     let prevHigh = -1;
     for (let s = 1; s <= TOWER.stages; s++) {
       const o = chestOdds(s);
       expect(o.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6);
-      expect(o).toHaveLength(7);
+      expect(o).toHaveLength(8);
+      expect(o).toEqual(chestOdds(1));
       const high = o.slice(3).reduce((a, b) => a + b, 0);
       expect(high).toBeGreaterThanOrEqual(prevHigh);
       prevHigh = high;
@@ -69,13 +70,13 @@ describe('보물상자 확률', () => {
       const o = chestOdds(stage);
       for (let r = 0; r < RARITY.length; r++) expect(Math.abs(cnt[r] / n - o[r] / 100)).toBeLessThan(0.012);
     }
-    expect(chestOdds(1)[6]).toBe(7);
-    expect(chestOdds(10)[6]).toBe(28);
+    expect(chestOdds(1)[7]).toBe(0.2);
+    expect(chestOdds(10)[7]).toBe(0.2);
   });
 
   it('보스층 상자는 신화 이상 확정', () => {
     const rng = makeRng(11);
-    for (let i = 0; i < 3000; i++) expect(rollWeapon(5, rng, true).rarity).toBeGreaterThanOrEqual(3);
+    for (let i = 0; i < 3000; i++) expect(rollWeapon(5, rng, true).rarity).toBeGreaterThanOrEqual(6);
   });
 
   it('중복 판매가가 등급이 높을수록 크다', () => {

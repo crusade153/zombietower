@@ -1,19 +1,21 @@
 export const RARITY = [
+  { id: 'trash', name: '쓰레기', color: '#8b929e', mult: 0.65, cost: 0.85 },
   { id: 'common', name: '일반', color: '#c9ced6', mult: 1.0, cost: 1.0 },
-  { id: 'rare', name: '레어', color: '#4ea3ff', mult: 1.4, cost: 1.15 },
-  { id: 'epic', name: '에픽', color: '#b366ff', mult: 2.0, cost: 1.3 },
-  { id: 'mythic', name: '신화', color: '#ff668a', mult: 2.6, cost: 1.45 },
+  { id: 'uncommon', name: '드문', color: '#70de92', mult: 1.25, cost: 1.1 },
+  { id: 'rare', name: '레어', color: '#4ea3ff', mult: 1.6, cost: 1.2 },
+  { id: 'epic', name: '에픽', color: '#b366ff', mult: 2.2, cost: 1.35 },
   { id: 'legendary', name: '전설', color: '#ffb020', mult: 3.2, cost: 1.6 },
-  { id: 'celestial', name: '천상', color: '#65efff', mult: 4.0, cost: 1.8 },
-  { id: 'invincible', name: '무적', color: '#fff3a6', mult: 5.0, cost: 2.0 },
+  { id: 'mythic', name: '신화', color: '#ff668a', mult: 4.5, cost: 1.8 },
+  { id: 'overpowered', name: '사기급', color: '#65efff', mult: 7.5, cost: 2.0 },
 ];
 
 // 등급별 추가 특성 (누적)
 export const RARITY_PERKS = [
   [],
-  ['coin'], // 코인 +15%
-  ['coin', 'burn'], // 화상
-  ['coin', 'burn', 'lifesteal'], // 처치 시 체력 회복
+  [],
+  ['coin'],
+  ['coin'],
+  ['coin', 'burn'],
   ['coin', 'burn', 'lifesteal'],
   ['coin', 'burn', 'lifesteal'],
   ['coin', 'burn', 'lifesteal'],
@@ -63,4 +65,20 @@ export const WEAPONS = {
     special: { name: '관통 산탄', desc: '좀비를 꿰뚫는 넓은 산탄 14발', mult: 1.2, range: 16, pellets: 14, spread: 20, knock: 8 },
   },
 };
+// 상자에서는 기본 무기를 발견하고, 합성 전용 무기는 대장간에서 제작한다.
+export const DROP_WEAPON_KINDS = Object.keys(WEAPONS);
+const fused = (baseKind, name, icon, dmg, color, desc, changes = {}) => ({
+  ...WEAPONS[baseKind], baseKind, fusion: true, name, icon, dmg, color, desc, ...changes,
+  special: { ...WEAPONS[baseKind].special, name: `${name} · ${WEAPONS[baseKind].special.name}`, mult: WEAPONS[baseKind].special.mult * 1.15 },
+});
+Object.assign(WEAPONS, {
+  thunderHammer: fused('bat', '뇌명 전투망치', '🔨', 34, '#72eaff', '전격 코어를 품은 대형 망치 · 광역 강타', { range: 3.1, arc: 150, maxTargets: 8, knockback: 16 }),
+  eclipseReaper: fused('axe', '월식 쌍날낫', '🌙', 78, '#c593ff', '양쪽 초승달 칼날로 넓은 범위를 벤다', { range: 3.5, arc: 200 }),
+  infernoChain: fused('whip', '지옥불 사슬', '⛓️', 23, '#ff8754', '가시 사슬과 불꽃 코어 · 긴 관통 공격', { range: 6.5, width: 1.8, slow: 0.55 }),
+  pulsePistol: fused('pistol', '성광 펄스건', '✨', 31, '#8dffba', '이중 코일이 응축한 강력한 광탄', { range: 38 }),
+  tempestRifle: fused('rifle', '폭풍 레일소총', '⚡', 20, '#66dfff', '노출된 전자 레일에서 고속 에너지탄 발사', { range: 44, spread: 0.5 }),
+  dragonShotgun: fused('shotgun', '용염 삼연포', '🐉', 21, '#ffb35c', '삼중 포신에서 쏟아지는 9발의 화염 산탄', { pellets: 9, range: 14 }),
+});
+export const FUSION_KINDS = Object.keys(WEAPONS).filter(k => WEAPONS[k].fusion);
 export const WEAPON_KINDS = Object.keys(WEAPONS);
+export const baseWeaponKind = w => WEAPONS[w.kind].baseKind || w.kind;
